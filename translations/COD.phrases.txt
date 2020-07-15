@@ -1,0 +1,88 @@
+"Phrases"
+{
+
+	"Plugin Load Message"
+
+	{
+
+		"#format"		"{1:s}"
+		"pl"			"Plugin {1} zostal zaladowany!"
+		"en"			"Plugin {1} has been loaded correctly!"
+	}
+
+	"BuyMenu Block Message"
+	{
+		"pl"			"Kupowanie na serwerze jest zablokowane!"
+		"en"			"Buying is blocked on the server!"
+	}
+
+	"Exp RoundWon Message"
+	{
+		"#format"		"{1:d}"
+		"pl"			"Otrzymales {1} expa za wygranie rundy"
+	}
+	
+	"Exp Kill Message"
+	{
+		"#format"		"{1:d}"
+		"pl"			"Otrzymales {1} expa za zabicie przeciwnika"
+	}
+	
+	"Exp Headshot Message"
+	{
+		"#format"		"{1:d}"
+		"pl"			"Otrzymales {1} expa za strzal w glowe"
+	}
+	
+	"Exp HostageRescued Message"
+	{
+		"#format"		"{1:d}"
+		"pl"			"Otrzymales {1} expa za uratowanie zakladnika"
+	}
+	
+	"Exp HostageHurt Message"
+	{
+		"#format"		"{1:d}"
+		"pl"			"Straciles {1} expa za zranienie zakladnika"
+	}
+	
+	"Exp RoundMVP Message"
+	{
+		"#format"		"{1:d}"
+		"pl"			"Otrzymales {1} expa za bycie MVP"
+	}
+	
+	"Exp BombPlanted Message"
+	{
+		"#format"		"{1:d}"
+		"pl"			"Otrzymales {1} expa za podlozenie bomby"
+	}
+	
+	"Exp BombDefused Message"
+	{
+		"#format"		"{1:d}"
+		"pl"			"Otrzymales {1} expa za rozbrojenie bomby"
+	}
+	
+	"Lvl Gained Message"
+	{
+		"#format"		"{1:d}"
+		"pl"			"Awansowales do {1} poziomu"
+	}
+	
+	"Lvl GainedMaxLVL Message"
+	{
+		"pl"			"Osiągnales maksymalny poziom"
+	}
+	
+	"Lvl Lost Message"
+	{
+		"#format"		"{1:d}"
+		"pl"			"Zostales zdegradowany do {1} poziomu"
+	}
+	
+	"Lvl LostStatPoints Message"
+	{
+		"pl"			"Straciles losowo wybrane punkty statystyk"
+	}
+}
