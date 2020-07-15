@@ -12,8 +12,8 @@ Silnik:
 - Zapis i odczyt danych do(z) bazy danych,
 - Statystyki,
 - System awansów klas,
-- Blokowanie kupowania i dawanie broni,
-- 
+- Blokowanie kupowania i dawanie broni, blokowanie wyrzucania i podnoszenia broni
+- Sklep serwerowy
 
 Menu:
 - Wybieranie klasy,
@@ -34,3 +34,9 @@ Klasy:
 
 Itemy:
 - Wszystko,
+
+Pomniejsze rzeczy:
+- Komunikaty o awansach (+ dźwięk), o osiągnięciu limitu lvl, 
+- Przenoszenie po wejściu do spectate, +
+- Wyciszyć spectate?,
+- Prędkość poruszania się gracza,
