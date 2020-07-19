@@ -7,17 +7,15 @@
 
 #define CVAR_FLAGS FCVAR_NOTIFY
 
-#define HEALTH_BASE 150
+#define HEALTH_BASE 90
 #define HEALTH_MULTIPLIER 2
 #define DAMAGE_MULTIPLIER 0.003
 #define RESISTANCE_MULTIPLIER 0.002
 #define STAMINA_MULTIPLIER 0.004
-#define STAMINA_BASE 0.8
+#define STAMINA_BASE 0.9
 
 #define MAXCLASSES 60+1
 #define MAXITEMS 50+1
-
-#define HIDEHUD_ALL ( 1<<2 )
 
 new const String:PLUGIN_NAME[32] = "cod_engine";
 new const String:PLUGIN_AUTHOR[32] = "GieeF";
@@ -42,6 +40,7 @@ new numberOfClasses = 0;
 new Handle:class_plugins[MAXCLASSES];
 new String:class_name[MAXCLASSES][32];
 new String:class_description[MAXCLASSES][128];
+new String:class_advance[MAXCLASSES][10];
 new String:class_weapons[MAXCLASSES][512];
 new class_intelligence[MAXCLASSES];
 new class_health[MAXCLASSES];
@@ -197,15 +196,23 @@ public Events() {
 	HookEvent("round_mvp", OnRoundMVP, EventHookMode_Post);
 	HookEvent("bomb_planted", OnBombPlanted, EventHookMode_Post);
 	HookEvent("bomb_defused", OnBombDefused, EventHookMode_Post);
-	HookEvent("player_connect_full", OnPlayerFullConnected, EventHookMode_Pre);
+	//HookEvent("player_team", OnClientSwitchTeam, EventHookMode_Pre);
+	HookUserMessage(GetUserMessageId("VGUIMenu"), TeamMenuHook, true);
 }
 
 public ConsoleCommands() {
-	RegConsoleCmd("buy", BuyBlock);
-	RegConsoleCmd("buymenu", BuyBlock);
-	RegConsoleCmd("buyrandom", BuyBlock);
-	RegConsoleCmd("autobuy", BuyBlock);
-	RegConsoleCmd("rebuy", BuyBlock);
+	AddCommandListener(Listener_JoinTeam, "jointeam");
+	AddCommandListener(Listener_BuyBlock, "buy");
+	AddCommandListener(Listener_BuyBlock, "buymenu");
+	AddCommandListener(Listener_BuyBlock, "buyrandom");
+	AddCommandListener(Listener_BuyBlock, "autobuy");
+	AddCommandListener(Listener_BuyBlock, "rebuy");
+	
+	//RegConsoleCmd("buy", BuyBlock);
+	//RegConsoleCmd("buymenu", BuyBlock);
+	//RegConsoleCmd("buyrandom", BuyBlock);
+	//RegConsoleCmd("autobuy", BuyBlock);
+	//RegConsoleCmd("rebuy", BuyBlock);
 	
 	RegConsoleCmd("sm_stats", AssignStatsPoints);
 	RegConsoleCmd("sm_staty", AssignStatsPoints);
@@ -237,7 +244,8 @@ public OnPluginEnd() {
 	UnhookEvent("round_mvp", OnRoundMVP, EventHookMode_Post);
 	UnhookEvent("bomb_planted", OnBombPlanted, EventHookMode_Post);
 	UnhookEvent("bomb_defused", OnBombDefused, EventHookMode_Post);
-	UnhookEvent("player_connect_full", OnPlayerFullConnected, EventHookMode_Pre);
+	//UnhookEvent("player_team", OnClientSwitchTeam, EventHookMode_Pre);
+	UnhookUserMessage(GetUserMessageId("VGUIMenu"), TeamMenuHook, true);
 	
 	for (new client = 1; client <= MaxClients; client++) {
 		SavePlayerData(client);
@@ -412,27 +420,63 @@ public Action:OnBombDefused(Handle:event, const String:name[], bool:dontbroadcas
 	return Plugin_Continue;
 }
 
-public OnClientPutInServer(client) {
-	LoadPlayerData(client);
+/*
+public Action:OnClientSwitchTeam(Handle:event, const String:name[], bool:dontbroadcast) {
+	new client = GetClientOfUserId(GetEventInt(event, "userid"));
+	new oldteam = GetEventInt(event, "oldteam");
 	
-	/*
 	if(!IsValidClient(client)) {
-		return;
+		return Plugin_Handled;
 	}
 	
-	if(GetClientTeam(client) != 1) {
-		//ChangeClientTeam(client, 1);
-		CS_SwitchTeam(client, CS_TEAM_SPECTATOR);
-		ForcePlayerSuicide(client);
-	}*/
+	if(!hasClass[client] && oldteam == CS_TEAM_SPECTATOR) {
+		PrintToChat(client, "BECZUNIA Z CB TYPQ");
+		return Plugin_Handled;
+	}
+	
+	return Plugin_Continue;
+}
+*/
+
+public Action:Listener_JoinTeam(client, const String:command[], args) {
+	if(!hasClass[client]) {
+		PrintToChat(client, "Aby dolaczyc do rozgrywki musisz miec wybrana klase");
+		return Plugin_Handled;
+	}
+	return Plugin_Continue;
 }
 
-public Action:OnPlayerFullConnected(Handle:event, const String:name[], bool:dontbroadcast) {
-	new client = GetClientOfUserId(GetEventInt(event, "userid"));
+public OnClientPutInServer(client) {
+	LoadPlayerData(client);
+}
+
+public Action:TeamMenuHook(UserMsg:msg_id, Protobuf:msg, players[], playersNum, bool:reliable, bool:init)
+{
+	new String:buffermsg[64];
+	PbReadString(msg, "name", buffermsg, sizeof(buffermsg));
 	
-	if(GetClientTeam(client) != 1) {
-		ChangeClientTeam(client, 1);
+	if (StrEqual(buffermsg, "team", true)) {
+		new client = players[0];
+		
+		if(!IsValidClient(client)) {
+			return Plugin_Handled;
+		}
+		
+		CreateTimer(0.1, ChangeTeam_Timer, client, TIMER_FLAG_NO_MAPCHANGE);
+		
+		return Plugin_Handled;
 	}
+	
+	return Plugin_Continue;
+}
+
+public Action:ChangeTeam_Timer(Handle:timer, client) {
+	if(!IsValidClient(client)) {
+		return Plugin_Handled;
+	}
+	
+	ChangeClientTeam(client, CS_TEAM_SPECTATOR);
+	return Plugin_Continue;
 }
 
 public OnClientDisconnect(int client) {
@@ -556,9 +600,18 @@ public Action:RemoveExpCommand(client, args) {
 	return Plugin_Continue;
 }
 
+/*
 public Action:BuyBlock(client, args) {
 	if (IsValidClient(client)) {
 		PrintToConsole(client, "[COD] %t", "BuyMenu Block Message", client);
+	}
+	
+	return Plugin_Handled;
+}*/
+
+public Action:Listener_BuyBlock(client, const String:command[], args) {
+	if (IsValidClient(client)) {
+		PrintToChat(client, "[COD] %t", "BuyMenu Block Message", client);
 	}
 	
 	return Plugin_Handled;
@@ -754,8 +807,6 @@ public Action:ApplyStats(client) {
 	
 	SetEntData(client, FindDataMapInfo(client, "m_iHealth"), HEALTH_BASE + (stats_health[client] * HEALTH_MULTIPLIER) + class_health[class[client]]);
 	SetEntPropFloat(client, Prop_Data, "m_flLaggedMovementValue", STAMINA_BASE + ((stats_stamina[client] + class_stamina[class[client]]) * STAMINA_MULTIPLIER));
-	//SetEntPropFloat(client, Prop_Send, "m_flVelocityModifier", STAMINA_BASE + ((stats_stamina[client] + class_stamina[client]) * STAMINA_MULTIPLIER));
-	//SetEntPropFloat(client, Prop_Send, "m_flVelocityModifier", 0.0);
 	
 	return Plugin_Continue;
 }
@@ -764,8 +815,6 @@ public Action:AssignStatsPoints(client, args) {
 	if(!IsValidClient(client)) {
 		return Plugin_Handled;
 	}
-	
-	SetEntProp(client, Prop_Send, "m_iHideHUD", HIDEHUD_ALL);	//todo
 	
 	new String:desc[128];
 	new Handle:menu = CreateMenu(AssignStatsPoints_Handler);
@@ -799,7 +848,7 @@ public Action:AssignStatsPoints(client, args) {
 	Format(desc, sizeof(desc), "Reset punktow");
 	AddMenuItem(menu, "7", desc);
 	
-	DisplayMenu(menu, client, 250);
+	DisplayMenu(menu, client, MENU_TIME_FOREVER);
 	
 	return Plugin_Handled;
 }
@@ -1002,7 +1051,7 @@ public ChooseClass_Handler(Handle:classhandle, MenuAction:action, client, positi
 }*/
 
 public Native_RegisterClass(Handle:plugin, args) {
-	if(args < 8) {
+	if(args < 9) {
 		return;
 	}
 	
@@ -1011,12 +1060,13 @@ public Native_RegisterClass(Handle:plugin, args) {
 	class_plugins[numberOfClasses] = plugin;
 	GetNativeString(1, class_name[numberOfClasses], sizeof(class_name[]));
 	GetNativeString(2, class_description[numberOfClasses], sizeof(class_description[]));
-	GetNativeString(3, class_weapons[numberOfClasses], sizeof(class_weapons[]));
-	class_intelligence[numberOfClasses] = GetNativeCell(4);
-	class_health[numberOfClasses] = GetNativeCell(5);
-	class_damage[numberOfClasses] = GetNativeCell(6);
-	class_resistance[numberOfClasses] = GetNativeCell(7);
-	class_stamina[numberOfClasses] = GetNativeCell(8);
+	GetNativeString(3, class_advance[numberOfClasses], sizeof(class_advance[]));
+	GetNativeString(4, class_weapons[numberOfClasses], sizeof(class_weapons[]));
+	class_intelligence[numberOfClasses] = GetNativeCell(5);
+	class_health[numberOfClasses] = GetNativeCell(6);
+	class_damage[numberOfClasses] = GetNativeCell(7);
+	class_resistance[numberOfClasses] = GetNativeCell(8);
+	class_stamina[numberOfClasses] = GetNativeCell(9);
 }
 
 public Native_RegisterItem(Handle:plugin, args) {
