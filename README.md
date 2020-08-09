@@ -40,4 +40,3 @@ Pomniejsze rzeczy:
 - ~~Przenoszenie po wejściu do spectate,~~
 - Wyciszyć spectate?,
 - ~~Prędkość poruszania się gracza,~~
-- reload serwera scalony z klasami i itemami
