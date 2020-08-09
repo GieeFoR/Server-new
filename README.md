@@ -6,19 +6,19 @@ Silnik:
 - Menu (szczegóły na dole),
 - Klasy (szczegóły na dole),
 - Itemy (szczegóły na dole),
-- System wyswietlania info o klasie, exp, lvl, item,
-- System itemów,
+- ~~System wyswietlania info o klasie, exp, lvl, item,~~
+- ~~System itemów,~~
 - ~~Zapis i odczyt danych do(z) pliku,~~
 - Zapis i odczyt danych do(z) bazy danych,
 - ~~Statystyki,~~
 - ~~System awansów klas,~~
-- ~~Blokowanie kupowania~~ i dawanie broni, blokowanie wyrzucania i podnoszenia broni
+- ~~Blokowanie kupowania i dawanie broni~~, blokowanie wyrzucania i ~~podnoszenia broni~~
 - Sklep serwerowy
 
 Menu:
 - ~~Wybieranie klasy,~~
 - ~~Opisy klas,~~
-- Opis itemow,
+- ~~Opis itemow,~~
 - Info o serwerze,
 - Kontakt z administracja,
 
