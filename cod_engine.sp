@@ -11,8 +11,8 @@
 #define HEALTH_MULTIPLIER 2
 #define DAMAGE_MULTIPLIER 0.003
 #define RESISTANCE_MULTIPLIER 0.002
-#define STAMINA_MULTIPLIER 0.004
-#define STAMINA_BASE 0.9
+#define TRIM_MULTIPLIER 0.004
+#define TRIM_BASE 0.9
 
 #define MAXCLASSES 10+1
 #define MAXITEMS 50+1
@@ -29,21 +29,24 @@ new const String:PLUGIN_VERSION[32] = "0.9";
 new const String:PLUGIN_DESCRIPTION[64] = "Plugin wprowadzajacy do cs-go serwery COD Mod";
 new const String:PLUGIN_URL[32] = "-";
 
-new bool:hasClass[MAXPLAYERS];
+new bool:player_hasClass[MAXPLAYERS];
+new bool:player_hasItem[MAXPLAYERS];
 
-new class[MAXPLAYERS];
-new newClass[MAXPLAYERS];
-new exp[MAXPLAYERS][MAXCLASSES];
-new lvl[MAXPLAYERS][MAXCLASSES];
-new advance[MAXPLAYERS][MAXCLASSES];
-new stats_points[MAXPLAYERS][MAXCLASSES];
-new stats_intelligence[MAXPLAYERS][MAXCLASSES];
-new stats_health[MAXPLAYERS][MAXCLASSES];
-new stats_damage[MAXPLAYERS][MAXCLASSES];
-new stats_resistance[MAXPLAYERS][MAXCLASSES];
-new stats_stamina[MAXPLAYERS][MAXCLASSES];
+new player_class[MAXPLAYERS];
+new player_newClass[MAXPLAYERS];
+new player_item[MAXPLAYERS];
+new player_itemRandomValue[MAXPLAYERS];
+new player_exp[MAXPLAYERS][MAXCLASSES];
+new player_lvl[MAXPLAYERS][MAXCLASSES];
+new player_advance[MAXPLAYERS][MAXCLASSES];
+new player_stats_points[MAXPLAYERS][MAXCLASSES];
+new player_stats_intelligence[MAXPLAYERS][MAXCLASSES];
+new player_stats_health[MAXPLAYERS][MAXCLASSES];
+new player_stats_damage[MAXPLAYERS][MAXCLASSES];
+new player_stats_resistance[MAXPLAYERS][MAXCLASSES];
+new player_stats_trim[MAXPLAYERS][MAXCLASSES];
 
-new numberOfClasses = 0;
+new class_numberOfClasses = 0;
 new Handle:class_plugins[MAXCLASSES];
 new String:class_name[MAXCLASSES][ADVANCESVALUE][NAMELEN];
 new String:class_description[MAXCLASSES][ADVANCESVALUE][DESCLEN];
@@ -52,18 +55,27 @@ new class_intelligence[MAXCLASSES][ADVANCESVALUE];
 new class_health[MAXCLASSES][ADVANCESVALUE];
 new class_damage[MAXCLASSES][ADVANCESVALUE];
 new class_resistance[MAXCLASSES][ADVANCESVALUE];
-new class_stamina[MAXCLASSES][ADVANCESVALUE];
+new class_trim[MAXCLASSES][ADVANCESVALUE];
 
-new numberOfItems = 0;
+new item_numberOfItems = 0;
 new Handle:item_plugins[MAXITEMS];
 new String:item_name[MAXITEMS][NAMELEN];
+new String:item_weapons[MAXITEMS][WEAPONSLEN];
 new String:item_description[MAXITEMS][DESCLEN];
+new String:item_blackList[MAXITEMS][WEAPONSLEN];
 new item_minVal[MAXITEMS];
 new item_maxVal[MAXITEMS];
+new item_intelligence[MAXITEMS];
+new item_health[MAXITEMS];
+new item_damage[MAXITEMS];
+new item_resistance[MAXITEMS];
+new item_trim[MAXITEMS];
 
 new stats_assignAmount[] =  { 1, 10, 50, 0, -1, -10, -50 };
 new stats_selectedAmount[MAXPLAYERS];
 new stats_limit[] =  { 80, 80, 80, 80, 80 };
+
+new String:weaponsAllowed[][] =  { "weapon_knife", "weapon_c4" };
 
 new itemValGlobal[MAXPLAYERS];
 new posGlobal[MAXPLAYERS];
@@ -137,10 +149,10 @@ enum (+= 1) {
 	pos_health,
 	pos_damage,
 	pos_resistance,
-	pos_stamina
+	pos_trim
 };
 
-public Plugin:myinfo =  {
+public Plugin:myinfo = {
 	name = PLUGIN_NAME, 
 	author = PLUGIN_AUTHOR, 
 	description = PLUGIN_DESCRIPTION, 
@@ -199,7 +211,8 @@ public OnPluginStart() {
 			
 			//if(IsValidClient(client)) 
 			//if(IsClientAuthorized(client) && IsClientConnected(client)) {
-			//	SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
+			//	SDKHook(client, SDKHook_OnTakeDamage, OnPlayerTakeDamage);
+			//	SDKHook(client, SDKHook_WeaponCanUse, WeaponCanUse);
 			//}
 		}
 	}
@@ -233,6 +246,12 @@ public ConsoleCommands() {
 	RegConsoleCmd("sm_klasa", ChooseClass_Menu);
 	RegConsoleCmd("sm_classes", ClassesDescription_Menu);
 	RegConsoleCmd("sm_klasy", ClassesDescription_Menu);
+	RegConsoleCmd("sm_items", ItemsDescription_Menu);
+	RegConsoleCmd("sm_itemy", ItemsDescription_Menu);
+	RegConsoleCmd("sm_perks", ItemsDescription_Menu);
+	RegConsoleCmd("sm_perki", ItemsDescription_Menu);
+	RegConsoleCmd("sm_item", ItemDescription);
+	RegConsoleCmd("sm_perk", ItemDescription);
 	RegConsoleCmd("menu", MainMenu_Menu);
 	RegConsoleCmd("sm_info", ReturnPlayerInfoCommand);
 	
@@ -291,6 +310,7 @@ public Action:OnPlayerSpawn(Handle:event, const String:name[], bool:dontBroadcas
 	}
 	
 	ApplyStats(client);
+	GiveWeapons(client);
 	return Plugin_Continue;
 }
 
@@ -321,7 +341,7 @@ public Action:OnPlayerDeath(Handle:event, const String:name[], bool:dontBroadcas
 	CheckExp(attacker);
 	
 	if (IsValidClient(attacker) && IsClientConnected(attacker)) {
-		PrintToChat(attacker, "Posiadany exp: %d", exp[attacker]);
+		PrintToChat(attacker, "Posiadany exp: %d", player_exp[attacker]);
 	}
 	
 	return Plugin_Continue;
@@ -336,7 +356,7 @@ public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontbroadcast) 
 				continue;
 			}
 			
-			if(!hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
+			if(!player_hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
 				continue;
 			}
 	
@@ -363,18 +383,26 @@ public Action:OnPlayerHurt(Handle:event, const String:name[], bool:dontbroadcast
 	new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
 	new damage = GetEventInt(event, "dmg_health");
 	
+	PrintToChat(attacker, "Powinno dodać exp 1");
+	
 	//	if(!IsValidClient(victim) || !IsValidClient(attacker)) {		- na botach nie można expić
 	if (!IsValidClient(attacker)) {
 		return Plugin_Handled;
 	}
 	
-	if(!hasClass[victim] || GetClientTeam(victim) == CS_TEAM_SPECTATOR) {
+	PrintToChat(attacker, "Powinno dodać exp 2");
+	
+	if(!player_hasClass[victim] || GetClientTeam(victim) == CS_TEAM_SPECTATOR) {
 		return Plugin_Handled;
 	}
+	
+	PrintToChat(attacker, "Powinno dodać exp 3");
 	
 	if (GetClientTeam(victim) == GetClientTeam(attacker)) {
 		return Plugin_Handled;
 	}
+	
+	PrintToChat(attacker, "Powinno dodać exp 4");
 	
 	PrintToChat(attacker, "Zadales %i DMG", damage);
 	AddExpByDMG(attacker, damage);
@@ -389,7 +417,7 @@ public Action:OnHostageRescued(Handle:event, const String:name[], bool:dontbroad
 		return Plugin_Handled;
 	}
 	
-	if(!hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
+	if(!player_hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
 		return Plugin_Handled;
 	}
 	
@@ -406,7 +434,7 @@ public Action:OnHostageHurt(Handle:event, const String:name[], bool:dontbroadcas
 		return Plugin_Handled;
 	}
 	
-	if(!hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
+	if(!player_hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
 		return Plugin_Handled;
 	}
 	
@@ -423,7 +451,7 @@ public Action:OnRoundMVP(Handle:event, const String:name[], bool:dontbroadcast) 
 		return Plugin_Handled;
 	}
 	
-	if(!hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
+	if(!player_hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
 		return Plugin_Handled;
 	}
 	
@@ -440,7 +468,7 @@ public Action:OnBombPlanted(Handle:event, const String:name[], bool:dontbroadcas
 		return Plugin_Handled;
 	}
 	
-	if(!hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
+	if(!player_hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
 		return Plugin_Handled;
 	}
 	
@@ -457,7 +485,7 @@ public Action:OnBombDefused(Handle:event, const String:name[], bool:dontbroadcas
 		return Plugin_Handled;
 	}
 	
-	if(!hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
+	if(!player_hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
 		return Plugin_Handled;
 	}
 	
@@ -472,7 +500,7 @@ public Action:Listener_JoinTeam(client, const String:command[], args) {
 		return Plugin_Handled;
 	}
 	
-	if(!hasClass[client]) {
+	if(!player_hasClass[client]) {
 		PrintToChat(client, "Aby dolaczyc do rozgrywki musisz miec wybrana klase");
 		return Plugin_Handled;
 	}
@@ -489,6 +517,124 @@ public Action:Listener_BuyBlock(client, const String:command[], args) {
 
 public OnClientPutInServer(client) {
 	LoadPlayerData(client);
+	SDKHook(client, SDKHook_OnTakeDamage, OnPlayerTakeDamage);
+	SDKHook(client, SDKHook_WeaponCanUse, WeaponCanUse);
+	//SDKHook(client, SDKHook_WeaponDrop, WeaponDrop);
+}
+
+public OnClientDisconnect(client) {
+	SavePlayerData(client);
+	SDKUnhook(client, SDKHook_OnTakeDamage, OnPlayerTakeDamage);
+	SDKUnhook(client, SDKHook_WeaponCanUse, WeaponCanUse);
+	//SDKUnhook(client, SDKHook_WeaponDrop, WeaponDrop);
+}
+
+public Action:OnPlayerTakeDamage(victim, &attacker, &inflictor, &Float:damage, &damagetype) {
+	/*	//zakomentowane na potrzeby testowania na botach
+	if(!IsValidClient(victim) || !IsValidClient(attacker)) {
+		return Plugin_Continue;
+	}*/
+	
+	if (GetClientTeam(victim) == GetClientTeam(attacker)) {
+		return Plugin_Continue;
+	}
+	
+	new attacker_damage = player_stats_damage[attacker][player_class[attacker]] + class_damage[player_class[attacker]][player_advance[attacker][player_class[attacker]]] + item_damage[player_item[attacker]];
+	new victim_resistance = player_stats_resistance[victim][player_class[victim]] + class_resistance[player_class[victim]][player_advance[victim][player_class[victim]]] + item_resistance[player_item[victim]];
+	
+	damage = damage * (1.0 + (attacker_damage - victim_resistance));
+	return Plugin_Changed;
+}
+
+public Action:WeaponCanUse(client, weapon) {
+	if (!IsValidClient(client) || !IsPlayerAlive(client)) {
+		return Plugin_Continue;
+	}
+	
+	if(!player_hasClass[client]) {
+		return Plugin_Continue;
+	}
+	
+	new String:weapons[WEAPONSLEN];
+	GetEdictClassname(weapon, weapons, sizeof(weapons));
+	new weaponindex = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
+	switch (weaponindex)
+	{
+		case 60:strcopy(weapons, sizeof(weapons), "weapon_m4a1_silencer");
+		case 61:strcopy(weapons, sizeof(weapons), "weapon_usp_silencer");
+		case 63:strcopy(weapons, sizeof(weapons), "weapon_cz75a");
+		case 64:strcopy(weapons, sizeof(weapons), "weapon_revolver");
+		case 500:strcopy(weapons, sizeof(weapons), "weapon_bayonet");
+		case 505:strcopy(weapons, sizeof(weapons), "weapon_knife_flip");
+		case 506:strcopy(weapons, sizeof(weapons), "weapon_knife_gut");
+		case 507:strcopy(weapons, sizeof(weapons), "weapon_knife_karambit");
+		case 508:strcopy(weapons, sizeof(weapons), "weapon_knife_m9_bayonet");
+		case 509:strcopy(weapons, sizeof(weapons), "weapon_knife_tactical");
+		case 512:strcopy(weapons, sizeof(weapons), "weapon_knife_falchion");
+		case 514:strcopy(weapons, sizeof(weapons), "weapon_knife_survival_bowie");
+		case 515:strcopy(weapons, sizeof(weapons), "weapon_knife_butterfly");
+		case 516:strcopy(weapons, sizeof(weapons), "weapon_knife_push");
+	}
+	
+	
+	new String:weaponsClass[10][32];
+	ExplodeString(class_weapons[player_class[client]][player_advance[client][player_class[client]]], "#", weaponsClass, sizeof(weaponsClass), sizeof(weaponsClass[]));
+	for (new i = 0; i < sizeof(weaponsClass); i++) {
+		if (StrEqual(weaponsClass[i], weapons)) {
+			return Plugin_Continue;
+		}
+	}
+	
+	new String:weaponsItem[10][32];
+	ExplodeString(item_weapons[player_item[client]], "#", weaponsItem, sizeof(weaponsItem), sizeof(weaponsItem[]));
+	for (new i = 0; i < sizeof(weaponsItem); i++) {
+		if (StrEqual(weaponsItem[i], weapons)) {
+			return Plugin_Continue;
+		}
+	}
+	
+	for (new i = 0; i < sizeof(weaponsAllowed); i++) {
+		if (StrEqual(weaponsAllowed[i], weapons)) {
+			return Plugin_Continue;
+		}
+	}
+	
+	return Plugin_Handled;
+}
+
+public Action:GiveWeapons(client) {
+	if (!IsPlayerAlive(client))
+		return Plugin_Continue;
+	
+	new ent = -1;
+	for (new slot = 0; slot < 4; slot++) {
+		if (slot == 2) {
+			continue;
+		}
+		
+		ent = GetPlayerWeaponSlot(client, slot);
+		if (ent != -1) {
+			RemovePlayerItem(client, ent);
+		}
+	}
+	
+	new String:weaponsClass[10][32];
+	ExplodeString(class_weapons[player_class[client]][player_advance[client][player_class[client]]], "#", weaponsClass, sizeof(weaponsClass), sizeof(weaponsClass[]));
+	for (new i = 0; i < sizeof(weaponsClass); i++) {
+		if (!StrEqual(weaponsClass[i], "")) {
+			GivePlayerItem(client, weaponsClass[i]);
+		}
+	}
+	
+	new String:weaponsItem[5][32];
+	ExplodeString(item_weapons[player_item[client]], "#", weaponsItem, sizeof(weaponsItem), sizeof(weaponsItem[]));
+	for (new i = 0; i < sizeof(weaponsItem); i++) {
+		if (!StrEqual(weaponsItem[i], "")) {
+			GivePlayerItem(client, weaponsItem[i]);
+		}
+	}
+	
+	return Plugin_Continue;
 }
 
 public Action:TeamMenuHook(UserMsg:msg_id, Protobuf:msg, players[], playersNum, bool:reliable, bool:init)
@@ -520,16 +666,12 @@ public Action:ChangeTeam_Timer(Handle:timer, client) {
 	return Plugin_Continue;
 }
 
-public OnClientDisconnect(client) {
-	SavePlayerData(client);
-}
-
 public SavePlayerData(client) {
 	if (!IsValidClient(client)) {
 		return;
 	}
 	
-	if(numberOfClasses <= 0) {
+	if(class_numberOfClasses <= 0) {
 		PrintToServer("Cannot save data - classes not exists");
 		return;
 	}
@@ -542,18 +684,18 @@ public SavePlayerData(client) {
 	
 	KvJumpToKey(DataBase, SteamID, true);
 	
-	for (new i = 1; i <= numberOfClasses; i++) {
+	for (new i = 1; i <= class_numberOfClasses; i++) {
 		KvJumpToKey(DataBase, class_name[i][pos_basic], true);
 		
-		KvSetNum(DataBase, "exp", exp[client][i]);
-		KvSetNum(DataBase, "lvl", lvl[client][i]);
-		KvSetNum(DataBase, "advance", advance[client][i]);
-		KvSetNum(DataBase, "points", stats_points[client][i]);
-		KvSetNum(DataBase, "intelligence", stats_intelligence[client][i]);
-		KvSetNum(DataBase, "health", stats_health[client][i]);
-		KvSetNum(DataBase, "damage", stats_damage[client][i]);
-		KvSetNum(DataBase, "resistance", stats_resistance[client][i]);
-		KvSetNum(DataBase, "stamina", stats_stamina[client][i]);
+		KvSetNum(DataBase, "exp", player_exp[client][i]);
+		KvSetNum(DataBase, "lvl", player_lvl[client][i]);
+		KvSetNum(DataBase, "advance", player_advance[client][i]);
+		KvSetNum(DataBase, "points", player_stats_points[client][i]);
+		KvSetNum(DataBase, "intelligence", player_stats_intelligence[client][i]);
+		KvSetNum(DataBase, "health", player_stats_health[client][i]);
+		KvSetNum(DataBase, "damage", player_stats_damage[client][i]);
+		KvSetNum(DataBase, "resistance", player_stats_resistance[client][i]);
+		KvSetNum(DataBase, "trim", player_stats_trim[client][i]);
 		
 		KvGoBack(DataBase);
 	}
@@ -576,7 +718,7 @@ public LoadPlayerData(client) {
 		return;
 	}
 	
-	if(numberOfClasses <= 0) {
+	if(class_numberOfClasses <= 0) {
 		PrintToServer("Cannot load data - classes not exists");
 		return;
 	}
@@ -589,18 +731,18 @@ public LoadPlayerData(client) {
 	
 	KvJumpToKey(DataBase, SteamID, true);
 	
-	for (new i = 1; i <= numberOfClasses; i++) {
+	for (new i = 1; i <= class_numberOfClasses; i++) {
 		KvJumpToKey(DataBase, class_name[i][pos_basic], true);
 		
-		exp[client][i] = KvGetNum(DataBase, "exp");
-		lvl[client][i] = KvGetNum(DataBase, "lvl", 1);
-		advance[client][i] = KvGetNum(DataBase, "advance");
-		stats_points[client][i] = KvGetNum(DataBase, "points");
-		stats_intelligence[client][i] = KvGetNum(DataBase, "intelligence");
-		stats_health[client][i] = KvGetNum(DataBase, "health");
-		stats_damage[client][i] = KvGetNum(DataBase, "damage");
-		stats_resistance[client][i] = KvGetNum(DataBase, "resistance");
-		stats_stamina[client][i] = KvGetNum(DataBase, "stamina");
+		player_exp[client][i] = KvGetNum(DataBase, "exp");
+		player_lvl[client][i] = KvGetNum(DataBase, "lvl", 1);
+		player_advance[client][i] = KvGetNum(DataBase, "advance");
+		player_stats_points[client][i] = KvGetNum(DataBase, "points");
+		player_stats_intelligence[client][i] = KvGetNum(DataBase, "intelligence");
+		player_stats_health[client][i] = KvGetNum(DataBase, "health");
+		player_stats_damage[client][i] = KvGetNum(DataBase, "damage");
+		player_stats_resistance[client][i] = KvGetNum(DataBase, "resistance");
+		player_stats_trim[client][i] = KvGetNum(DataBase, "trim");
 		
 		KvGoBack(DataBase);
 	}
@@ -614,16 +756,16 @@ public Action:ReturnPlayerInfoCommand(client, args) {
 	}
 	
 	if (args < 1) {
-		PrintToChat(client, "Twoja klasa: %s", class_name[class[client]][advance[client][class[client]]]);
-		PrintToChat(client, "Twoj exp: %d", exp[client][class[client]]);
-		PrintToChat(client, "Twoj lvl: %d", lvl[client][class[client]]);
-		PrintToChat(client, "Twoj awans: %d", advance[client]);
-		PrintToChat(client, "Twoje punkty do rozdania: %d", stats_points[client][class[client]]);
-		PrintToChat(client, "Twoja inteligencja: %d", stats_intelligence[client][class[client]]);
-		PrintToChat(client, "Twoje zdrowie: %d", stats_health[client][class[client]]);
-		PrintToChat(client, "Twoje obrazenia: %d", stats_damage[client][class[client]]);
-		PrintToChat(client, "Twoja odpornosc: %d", stats_resistance[client][class[client]]);
-		PrintToChat(client, "Twoja kondycja: %d", stats_stamina[client][class[client]]);
+		PrintToChat(client, "Twoja klasa: %s", class_name[player_class[client]][player_advance[client][player_class[client]]]);
+		PrintToChat(client, "Twoj exp: %d", player_exp[client][player_class[client]]);
+		PrintToChat(client, "Twoj lvl: %d", player_lvl[client][player_class[client]]);
+		PrintToChat(client, "Twoj awans: %d", player_advance[client]);
+		PrintToChat(client, "Twoje punkty do rozdania: %d", player_stats_points[client][player_class[client]]);
+		PrintToChat(client, "Twoja inteligencja: %d", player_stats_intelligence[client][player_class[client]]);
+		PrintToChat(client, "Twoje zdrowie: %d", player_stats_health[client][player_class[client]]);
+		PrintToChat(client, "Twoje obrazenia: %d", player_stats_damage[client][player_class[client]]);
+		PrintToChat(client, "Twoja odpornosc: %d", player_stats_resistance[client][player_class[client]]);
+		PrintToChat(client, "Twoja kondycja: %d", player_stats_trim[client][player_class[client]]);
 	}
 	return Plugin_Continue;
 }
@@ -633,7 +775,7 @@ public Action:AddExpCommand(client, args) {
 		return Plugin_Handled;
 	}
 	
-	if(!hasClass[client]) {
+	if(!player_hasClass[client]) {
 		return Plugin_Handled;
 	}
 	
@@ -642,9 +784,9 @@ public Action:AddExpCommand(client, args) {
 		return Plugin_Continue;
 	}
 	else if(args == 1) {
-		char arg[10];
+		new String:arg[10];
 		GetCmdArg(1, arg, sizeof(arg));
-		int amountOfExp = StringToInt(arg);
+		new amountOfExp = StringToInt(arg);
 		
 		AddAmountOfExp(client, amountOfExp);
 		return Plugin_Continue;
@@ -658,7 +800,7 @@ public Action:RemoveExpCommand(client, args) {
 		return Plugin_Handled;
 	}
 	
-	if(!hasClass[client]) {
+	if(!player_hasClass[client]) {
 		return Plugin_Handled;
 	}
 	
@@ -667,9 +809,9 @@ public Action:RemoveExpCommand(client, args) {
 		return Plugin_Continue;
 	}
 	else if(args == 1) {
-		char arg[10];
+		new String:arg[10];
 		GetCmdArg(1, arg, sizeof(arg));
-		int amountOfExp = StringToInt(arg);
+		new amountOfExp = StringToInt(arg);
 		
 		AddAmountOfExp(client, -amountOfExp);
 		return Plugin_Continue;
@@ -678,7 +820,7 @@ public Action:RemoveExpCommand(client, args) {
 	return Plugin_Continue;
 }
 
-public Action:AddAmountOfExp(client, int amount) {
+public Action:AddAmountOfExp(client, amount) {
 	if(!IsValidClient(client)) {
 		return Plugin_Handled;
 	}
@@ -688,24 +830,24 @@ public Action:AddAmountOfExp(client, int amount) {
 	}
 	
 	if(amount < 0) {
-		if(exp[client][class[client]] <= FloatAbs(float(amount))) {
+		if(player_exp[client][player_class[client]] <= FloatAbs(float(amount))) {
 			return Plugin_Handled;
 		}
 	}
 	
-	exp[client][class[client]] += amount;
+	player_exp[client][player_class[client]] += amount;
 	CheckExp(client);
 	
 	return Plugin_Continue;
 }
 
-public Action:AddExpByDMG(client, int damage) {
+public Action:AddExpByDMG(client, damage) {
 	if(!IsValidClient(client)) {
 		return Plugin_Handled;
 	}
 	
 	if(damageMultiplier) {
-		exp[client][class[client]] += RoundToFloor(damage*damageMultiplier);
+		player_exp[client][player_class[client]] += RoundToFloor(damage*damageMultiplier);
 		CheckExp(client);
 	}
 	
@@ -717,26 +859,26 @@ public Action:CheckExp(client) {
 		return Plugin_Handled;
 	}
 	
-	if(exp[client][class[client]] <= expTable[lvl[client][class[client]]]) {
-		if(lvl[client][class[client]] <= 0) {
+	if(player_exp[client][player_class[client]] <= expTable[player_lvl[client][player_class[client]]]) {
+		if(player_lvl[client][player_class[client]] <= 0) {
 			return Plugin_Continue;
 		}
 		
-		if(exp[client][class[client]] >= expTable[lvl[client][class[client]]-1]) {
+		if(player_exp[client][player_class[client]] >= expTable[player_lvl[client][player_class[client]]-1]) {
 			return Plugin_Continue;
 		}
 		
 		new counter = 0;
-		while(exp[client][class[client]] < expTable[lvl[client][class[client]]-counter-1]) {
-			if(lvl[client][class[client]]-counter-1 <= 0) {
+		while(player_exp[client][player_class[client]] < expTable[player_lvl[client][player_class[client]]-counter-1]) {
+			if(player_lvl[client][player_class[client]]-counter-1 <= 0) {
 				break;
 			}
 			counter++;
 		}
 		
 		if(counter != 0) {
-			lvl[client][class[client]] -= counter;
-			PrintToChat(client, "[COD] %t", "Lvl Lost Message", lvl[client][class[client]]);
+			player_lvl[client][player_class[client]] -= counter;
+			PrintToChat(client, "[COD] %t", "Lvl Lost Message", player_lvl[client][player_class[client]]);
 		}
 		
 		CheckAdvance(client);
@@ -745,18 +887,18 @@ public Action:CheckExp(client) {
 	}
 	
 	new counter = 0;
-	while(exp[client][class[client]] > expTable[lvl[client][class[client]]+counter]) {
-		if(lvl[client][class[client]]+counter >= sizeof(expTable)-1) {
+	while(player_exp[client][player_class[client]] > expTable[player_lvl[client][player_class[client]]+counter]) {
+		if(player_lvl[client][player_class[client]]+counter >= sizeof(expTable)-1) {
 			break;
 		}
 		counter++;
 	}
 	
 	if(counter != 0) {
-		lvl[client][class[client]] += counter;
-		PrintToChat(client, "[COD] %t", "Lvl Gained Message", lvl[client][class[client]]);
+		player_lvl[client][player_class[client]] += counter;
+		PrintToChat(client, "[COD] %t", "Lvl Gained Message", player_lvl[client][player_class[client]]);
 		
-		if(lvl[client][class[client]] == sizeof(expTable)-1) {
+		if(player_lvl[client][player_class[client]] == sizeof(expTable)-1) {
 			PrintToChat(client, "[COD] %t", "Lvl GainedMaxLVL Message");
 		}
 	}
@@ -771,24 +913,24 @@ public Action:CheckAdvance(client) {
 		return Plugin_Handled;
 	}
 	
-	if(lvl[client][class[client]] >= god) {
-		advance[client][class[client]] = pos_god;
+	if(player_lvl[client][player_class[client]] >= god) {
+		player_advance[client][player_class[client]] = pos_god;
 		return Plugin_Continue;
 	}
-	else if(lvl[client][class[client]] >= master) {
-		advance[client][class[client]] = pos_master;
+	else if(player_lvl[client][player_class[client]] >= master) {
+		player_advance[client][player_class[client]] = pos_master;
 		return Plugin_Continue;
 	}
-	else if(lvl[client][class[client]] >= elite) {
-		advance[client][class[client]] = pos_elite;
+	else if(player_lvl[client][player_class[client]] >= elite) {
+		player_advance[client][player_class[client]] = pos_elite;
 		return Plugin_Continue;
 	}
-	else if(lvl[client][class[client]] >= pro) {
-		advance[client][class[client]] = pos_pro;
+	else if(player_lvl[client][player_class[client]] >= pro) {
+		player_advance[client][player_class[client]] = pos_pro;
 		return Plugin_Continue;
 	}
 	else {
-		advance[client][class[client]] = pos_basic;
+		player_advance[client][player_class[client]] = pos_basic;
 	}
 	
 	return Plugin_Continue;
@@ -799,8 +941,8 @@ public Action:CheckPoints(client) {
 		return Plugin_Handled;
 	}
 	
-	new sumOfPoints = lvl[client][class[client]] * 2;
-	new distributedPoints = stats_intelligence[client][class[client]] + stats_health[client][class[client]] + stats_damage[client][class[client]] + stats_resistance[client][class[client]] + stats_stamina[client][class[client]];
+	new sumOfPoints = player_lvl[client][player_class[client]] * 2;
+	new distributedPoints = player_stats_intelligence[client][player_class[client]] + player_stats_health[client][player_class[client]] + player_stats_damage[client][player_class[client]] + player_stats_resistance[client][player_class[client]] + player_stats_trim[client][player_class[client]];
 	new tempPoints = sumOfPoints - distributedPoints;
 	
 	if(tempPoints == 0) {
@@ -818,32 +960,32 @@ public Action:CheckPoints(client) {
 			
 			switch(randNum) {
 				case 0: {
-					if(stats_intelligence[client][class[client]] > 0) {
-						stats_intelligence[client][class[client]]--;
+					if(player_stats_intelligence[client][player_class[client]] > 0) {
+						player_stats_intelligence[client][player_class[client]]--;
 						tempPoints++;
 					}
 				}
 				case 1: {
-					if(stats_health[client][class[client]] > 0) {
-						stats_health[client][class[client]]--;
+					if(player_stats_health[client][player_class[client]] > 0) {
+						player_stats_health[client][player_class[client]]--;
 						tempPoints++;
 					}
 				}
 				case 2: {
-					if(stats_damage[client][class[client]] > 0) {
-						stats_damage[client][class[client]]--;
+					if(player_stats_damage[client][player_class[client]] > 0) {
+						player_stats_damage[client][player_class[client]]--;
 						tempPoints++;
 					}
 				}
 				case 3: {
-					if(stats_resistance[client][class[client]] > 0) {
-						stats_resistance[client][class[client]]--;
+					if(player_stats_resistance[client][player_class[client]] > 0) {
+						player_stats_resistance[client][player_class[client]]--;
 						tempPoints++;
 					}
 				}
 				case 4: {
-					if(stats_stamina[client][class[client]] > 0) {
-						stats_stamina[client][class[client]]--;
+					if(player_stats_trim[client][player_class[client]] > 0) {
+						player_stats_trim[client][player_class[client]]--;
 						tempPoints++;
 					}
 				}
@@ -851,7 +993,7 @@ public Action:CheckPoints(client) {
 		} 
 	}
 	
-	stats_points[client][class[client]] = tempPoints;
+	player_stats_points[client][player_class[client]] = tempPoints;
 	return Plugin_Continue;
 }
 
@@ -862,12 +1004,12 @@ public Action:ApplyStats(client) {
 	
 	SetEntProp(client, Prop_Send, "m_ArmorValue", 0);
 	
-	if(!hasClass[client]) {
+	if(!player_hasClass[client]) {
 		return Plugin_Handled;
 	}
 	
-	SetEntData(client, FindDataMapInfo(client, "m_iHealth"), HEALTH_BASE + (stats_health[client][class[client]] * HEALTH_MULTIPLIER) + class_health[class[client]][advance[client][class[client]]]);
-	SetEntPropFloat(client, Prop_Data, "m_flLaggedMovementValue", STAMINA_BASE + ((stats_stamina[client][class[client]] + class_stamina[class[client]][advance[client][class[client]]]) * STAMINA_MULTIPLIER));
+	SetEntData(client, FindDataMapInfo(client, "m_iHealth"), HEALTH_BASE + (player_stats_health[client][player_class[client]] * HEALTH_MULTIPLIER) + class_health[player_class[client]][player_advance[client][player_class[client]]] + item_health[player_item[client]]);
+	SetEntPropFloat(client, Prop_Data, "m_flLaggedMovementValue", TRIM_BASE + ((player_stats_trim[client][player_class[client]] + class_trim[player_class[client]][player_advance[client][player_class[client]]] + item_trim[player_item[client]]) * TRIM_MULTIPLIER));
 	
 	return Plugin_Continue;
 }
@@ -880,7 +1022,7 @@ public Action:AssignStatsPoints_Menu(client, args) {
 	new String:desc[128];
 	new Handle:menu = CreateMenu(AssignStatsPoints_Handler);
 	
-	Format(desc, sizeof(desc), "Przydziel punkty (%d):", stats_points[client]);
+	Format(desc, sizeof(desc), "Przydziel punkty (%d):", player_stats_points[client]);
 	SetMenuTitle(menu, desc);
 	
 	if (stats_assignAmount[stats_selectedAmount[client]] == 0) {
@@ -891,19 +1033,19 @@ public Action:AssignStatsPoints_Menu(client, args) {
 	}
 	AddMenuItem(menu, "1", desc);
 	
-	Format(desc, sizeof(desc), "Inteligencja: %d/%d", stats_intelligence[client], stats_limit[pos_intelligence]);
+	Format(desc, sizeof(desc), "Inteligencja: %d/%d", player_stats_intelligence[client], stats_limit[pos_intelligence]);
 	AddMenuItem(menu, "2", desc);
 	
-	Format(desc, sizeof(desc), "Zdrowie: %d/%d ", stats_health[client], stats_limit[pos_health]);
+	Format(desc, sizeof(desc), "Zdrowie: %d/%d ", player_stats_health[client], stats_limit[pos_health]);
 	AddMenuItem(menu, "3", desc);
 	
-	Format(desc, sizeof(desc), "Obrazenia: %d/%d", stats_damage[client], stats_limit[pos_damage]);
+	Format(desc, sizeof(desc), "Obrazenia: %d/%d", player_stats_damage[client], stats_limit[pos_damage]);
 	AddMenuItem(menu, "4", desc);
 	
-	Format(desc, sizeof(desc), "Wytrzymalosc: %d/%d", stats_resistance[client], stats_limit[pos_resistance]);
+	Format(desc, sizeof(desc), "Wytrzymalosc: %d/%d", player_stats_resistance[client], stats_limit[pos_resistance]);
 	AddMenuItem(menu, "5", desc);
 	
-	Format(desc, sizeof(desc), "Kondycja: %d/%d", stats_stamina[client], stats_limit[pos_stamina]);
+	Format(desc, sizeof(desc), "Kondycja: %d/%d", player_stats_trim[client], stats_limit[pos_trim]);
 	AddMenuItem(menu, "6", desc);
 	
 	Format(desc, sizeof(desc), "Reset punktow");
@@ -919,16 +1061,16 @@ public AssignStatsPoints_Handler(Handle:classhandle, MenuAction:action, client, 
 		new String:item[32];
 		GetMenuItem(classhandle, position, item, sizeof(item));
 		
-		if(!stats_points[client] && !StrEqual(item, "7")) {
+		if(!player_stats_points[client] && !StrEqual(item, "7")) {
 			return;
 		}
 		
 		new value;
 		if(stats_assignAmount[stats_selectedAmount[client]] == 0) {
-			value = stats_points[client][class[client]];
+			value = player_stats_points[client][player_class[client]];
 		}
 		else if(stats_assignAmount[stats_selectedAmount[client]] > 0){
-			value = (stats_points[client][class[client]] > stats_assignAmount[stats_selectedAmount[client]]) ? stats_assignAmount[stats_selectedAmount[client]] : stats_points[client][class[client]];
+			value = (player_stats_points[client][player_class[client]] > stats_assignAmount[stats_selectedAmount[client]]) ? stats_assignAmount[stats_selectedAmount[client]] : player_stats_points[client][player_class[client]];
 		}
 		
 		if(StrEqual(item, "1")) {
@@ -937,111 +1079,111 @@ public AssignStatsPoints_Handler(Handle:classhandle, MenuAction:action, client, 
 		}
 		else if(StrEqual(item, "2")) {
 			if(stats_assignAmount[stats_selectedAmount[client]] < 0) {
-				if(stats_intelligence[client][class[client]] >= -stats_assignAmount[stats_selectedAmount[client]]) {
-					stats_points[client][class[client]] -= stats_assignAmount[stats_selectedAmount[client]];
-					stats_intelligence[client][class[client]] += stats_assignAmount[stats_selectedAmount[client]];
+				if(player_stats_intelligence[client][player_class[client]] >= -stats_assignAmount[stats_selectedAmount[client]]) {
+					player_stats_points[client][player_class[client]] -= stats_assignAmount[stats_selectedAmount[client]];
+					player_stats_intelligence[client][player_class[client]] += stats_assignAmount[stats_selectedAmount[client]];
 				}
 				else {
-					stats_points[client][class[client]] += stats_intelligence[client][class[client]];
-					stats_intelligence[client][class[client]] = 0;
+					player_stats_points[client][player_class[client]] += player_stats_intelligence[client][player_class[client]];
+					player_stats_intelligence[client][player_class[client]] = 0;
 				}
 			}
 			else {
-				stats_intelligence[client][class[client]] += value;
-				if(stats_intelligence[client][class[client]] > stats_limit[pos_intelligence]) {
-					stats_points[client][class[client]] = stats_points[client][class[client]] - value + (stats_intelligence[client][class[client]] - stats_limit[pos_intelligence]);
-					stats_intelligence[client][class[client]] = stats_limit[pos_intelligence];
+				player_stats_intelligence[client][player_class[client]] += value;
+				if(player_stats_intelligence[client][player_class[client]] > stats_limit[pos_intelligence]) {
+					player_stats_points[client][player_class[client]] = player_stats_points[client][player_class[client]] - value + (player_stats_intelligence[client][player_class[client]] - stats_limit[pos_intelligence]);
+					player_stats_intelligence[client][player_class[client]] = stats_limit[pos_intelligence];
 				}
 				else {
-					stats_points[client][class[client]] -= value;
+					player_stats_points[client][player_class[client]] -= value;
 				}
 			}
 		}
 		else if(StrEqual(item, "3")) {
 			if(stats_assignAmount[stats_selectedAmount[client]] < 0) {
-				if(stats_health[client][class[client]] >= -stats_assignAmount[stats_selectedAmount[client]]) {
-					stats_points[client][class[client]] -= stats_assignAmount[stats_selectedAmount[client]];
-					stats_health[client][class[client]] += stats_assignAmount[stats_selectedAmount[client]];
+				if(player_stats_health[client][player_class[client]] >= -stats_assignAmount[stats_selectedAmount[client]]) {
+					player_stats_points[client][player_class[client]] -= stats_assignAmount[stats_selectedAmount[client]];
+					player_stats_health[client][player_class[client]] += stats_assignAmount[stats_selectedAmount[client]];
 				}
 				else {
-					stats_points[client][class[client]] += stats_health[client][class[client]];
-					stats_health[client][class[client]] = 0;
+					player_stats_points[client][player_class[client]] += player_stats_health[client][player_class[client]];
+					player_stats_health[client][player_class[client]] = 0;
 				}
 			}
 			else {
-				stats_health[client][class[client]] += value;
-				if(stats_health[client][class[client]] > stats_limit[pos_health]) {
-					stats_points[client][class[client]] = stats_points[client][class[client]] - value + (stats_health[client][class[client]] - stats_limit[pos_health]);
-					stats_health[client][class[client]] = stats_limit[pos_health];
+				player_stats_health[client][player_class[client]] += value;
+				if(player_stats_health[client][player_class[client]] > stats_limit[pos_health]) {
+					player_stats_points[client][player_class[client]] = player_stats_points[client][player_class[client]] - value + (player_stats_health[client][player_class[client]] - stats_limit[pos_health]);
+					player_stats_health[client][player_class[client]] = stats_limit[pos_health];
 				}
 				else {
-					stats_points[client][class[client]] -= value;
+					player_stats_points[client][player_class[client]] -= value;
 				}
 			}
 		}
 		else if(StrEqual(item, "4")) {
 			if(stats_assignAmount[stats_selectedAmount[client]] < 0) {
-				if(stats_damage[client][class[client]] >= -stats_assignAmount[stats_selectedAmount[client]]) {
-					stats_points[client][class[client]] -= stats_assignAmount[stats_selectedAmount[client]];
-					stats_damage[client][class[client]] += stats_assignAmount[stats_selectedAmount[client]];
+				if(player_stats_damage[client][player_class[client]] >= -stats_assignAmount[stats_selectedAmount[client]]) {
+					player_stats_points[client][player_class[client]] -= stats_assignAmount[stats_selectedAmount[client]];
+					player_stats_damage[client][player_class[client]] += stats_assignAmount[stats_selectedAmount[client]];
 				}
 				else {
-					stats_points[client][class[client]] += stats_damage[client][class[client]];
-					stats_damage[client][class[client]] = 0;
+					player_stats_points[client][player_class[client]] += player_stats_damage[client][player_class[client]];
+					player_stats_damage[client][player_class[client]] = 0;
 				}
 			}
 			else {
-				stats_damage[client][class[client]] += value;
-				if(stats_damage[client][class[client]] > stats_limit[pos_damage]) {
-					stats_points[client][class[client]] = stats_points[client][class[client]] - value + (stats_damage[client][class[client]] - stats_limit[pos_damage]);
-					stats_damage[client][class[client]] = stats_limit[pos_damage];
+				player_stats_damage[client][player_class[client]] += value;
+				if(player_stats_damage[client][player_class[client]] > stats_limit[pos_damage]) {
+					player_stats_points[client][player_class[client]] = player_stats_points[client][player_class[client]] - value + (player_stats_damage[client][player_class[client]] - stats_limit[pos_damage]);
+					player_stats_damage[client][player_class[client]] = stats_limit[pos_damage];
 				}
 				else {
-					stats_points[client][class[client]] -= value;
+					player_stats_points[client][player_class[client]] -= value;
 				}
 			}
 		}
 		else if(StrEqual(item, "5")) {
 			if(stats_assignAmount[stats_selectedAmount[client]] < 0) {
-				if(stats_resistance[client][class[client]] >= -stats_assignAmount[stats_selectedAmount[client]]) {
-					stats_points[client][class[client]] -= stats_assignAmount[stats_selectedAmount[client]];
-					stats_resistance[client][class[client]] += stats_assignAmount[stats_selectedAmount[client]];
+				if(player_stats_resistance[client][player_class[client]] >= -stats_assignAmount[stats_selectedAmount[client]]) {
+					player_stats_points[client][player_class[client]] -= stats_assignAmount[stats_selectedAmount[client]];
+					player_stats_resistance[client][player_class[client]] += stats_assignAmount[stats_selectedAmount[client]];
 				}
 				else {
-					stats_points[client][class[client]] += stats_resistance[client][class[client]];
-					stats_resistance[client][class[client]] = 0;
+					player_stats_points[client][player_class[client]] += player_stats_resistance[client][player_class[client]];
+					player_stats_resistance[client][player_class[client]] = 0;
 				}
 			}
 			else {
-				stats_resistance[client][class[client]] += value;
-				if(stats_resistance[client][class[client]] > stats_limit[pos_resistance]) {
-					stats_points[client][class[client]] = stats_points[client][class[client]] - value + (stats_resistance[client][class[client]] - stats_limit[pos_resistance]);
-					stats_resistance[client][class[client]] = stats_limit[pos_resistance];
+				player_stats_resistance[client][player_class[client]] += value;
+				if(player_stats_resistance[client][player_class[client]] > stats_limit[pos_resistance]) {
+					player_stats_points[client][player_class[client]] = player_stats_points[client][player_class[client]] - value + (player_stats_resistance[client][player_class[client]] - stats_limit[pos_resistance]);
+					player_stats_resistance[client][player_class[client]] = stats_limit[pos_resistance];
 				}
 				else {
-					stats_points[client][class[client]] -= value;
+					player_stats_points[client][player_class[client]] -= value;
 				}
 			}
 		}
 		else if(StrEqual(item, "6")) {
 			if(stats_assignAmount[stats_selectedAmount[client]] < 0) {
-				if(stats_stamina[client][class[client]] >= -stats_assignAmount[stats_selectedAmount[client]]) {
-					stats_points[client][class[client]] -= stats_assignAmount[stats_selectedAmount[client]];
-					stats_stamina[client][class[client]] += stats_assignAmount[stats_selectedAmount[client]];
+				if(player_stats_trim[client][player_class[client]] >= -stats_assignAmount[stats_selectedAmount[client]]) {
+					player_stats_points[client][player_class[client]] -= stats_assignAmount[stats_selectedAmount[client]];
+					player_stats_trim[client][player_class[client]] += stats_assignAmount[stats_selectedAmount[client]];
 				}
 				else {
-					stats_points[client][class[client]] += stats_stamina[client][class[client]];
-					stats_stamina[client][class[client]] = 0;
+					player_stats_points[client][player_class[client]] += player_stats_trim[client][player_class[client]];
+					player_stats_trim[client][player_class[client]] = 0;
 				}
 			}
 			else {
-				stats_stamina[client][class[client]] += value;
-				if(stats_stamina[client][class[client]] > stats_limit[pos_stamina]) {
-					stats_points[client][class[client]] = stats_points[client][class[client]] - value + (stats_stamina[client][class[client]] - stats_limit[pos_stamina]);
-					stats_stamina[client][class[client]] = stats_limit[pos_stamina];
+				player_stats_trim[client][player_class[client]] += value;
+				if(player_stats_trim[client][player_class[client]] > stats_limit[pos_trim]) {
+					player_stats_points[client][player_class[client]] = player_stats_points[client][player_class[client]] - value + (player_stats_trim[client][player_class[client]] - stats_limit[pos_trim]);
+					player_stats_trim[client][player_class[client]] = stats_limit[pos_trim];
 				}
 				else {
-					stats_points[client][class[client]] -= value;
+					player_stats_points[client][player_class[client]] -= value;
 				}
 			}
 		}
@@ -1049,7 +1191,7 @@ public AssignStatsPoints_Handler(Handle:classhandle, MenuAction:action, client, 
 			ResetPoints(client);
 		}
 		
-		if(stats_points[client][class[client]]) {
+		if(player_stats_points[client][player_class[client]]) {
 			AssignStatsPoints_Menu(client, 0);
 		}
 	}
@@ -1069,12 +1211,12 @@ public Action:ResetPoints_Command(client, args) {
 
 public ResetPoints(client) {
 	PrintToChat(client, "Punkty zostaly zresetowane");
-	stats_points[client][class[client]] = stats_points[client][class[client]] + stats_intelligence[client][class[client]] + stats_health[client][class[client]] + stats_damage[client][class[client]] + stats_resistance[client][class[client]] + stats_stamina[client][class[client]];
-	stats_intelligence[client][class[client]] = 0;
-	stats_health[client][class[client]] = 0;
-	stats_damage[client][class[client]] = 0;
-	stats_resistance[client][class[client]] = 0;
-	stats_stamina[client][class[client]] = 0;
+	player_stats_points[client][player_class[client]] = player_stats_points[client][player_class[client]] + player_stats_intelligence[client][player_class[client]] + player_stats_health[client][player_class[client]] + player_stats_damage[client][player_class[client]] + player_stats_resistance[client][player_class[client]] + player_stats_trim[client][player_class[client]];
+	player_stats_intelligence[client][player_class[client]] = 0;
+	player_stats_health[client][player_class[client]] = 0;
+	player_stats_damage[client][player_class[client]] = 0;
+	player_stats_resistance[client][player_class[client]] = 0;
+	player_stats_trim[client][player_class[client]] = 0;
 }
 
 public Action:ChooseClass_Menu(client, args) {
@@ -1089,8 +1231,8 @@ public Action:ChooseClass_Menu(client, args) {
 	SetMenuTitle(menu, desc);
 	
 	new String:temp[3];
-	for (new i = 1; i <= numberOfClasses; i++) {
-		Format(desc, sizeof(desc), "%s [%dlvl]", class_name[i][advance[client][i]], lvl[client][i]);
+	for (new i = 1; i <= class_numberOfClasses; i++) {
+		Format(desc, sizeof(desc), "%s [%dlvl]", class_name[i][player_advance[client][i]], player_lvl[client][i]);
 		IntToString(i, temp, sizeof(temp));
 		AddMenuItem(menu, temp, desc);
 	}
@@ -1106,20 +1248,20 @@ public ChooseClass_Handler(Handle:classhandle, MenuAction:action, client, positi
 		GetMenuItem(classhandle, position, item, sizeof(item));
 		new itemVal = StringToInt(item);
 		
-		if(class[client] == itemVal) {
-			PrintToChat(client, "Aktualnie korzystasz z klasy: %s", class_name[class[client]][advance[client][class[client]]]);
+		if(player_class[client] == itemVal) {
+			PrintToChat(client, "Aktualnie korzystasz z klasy: %s", class_name[player_class[client]][player_advance[client][player_class[client]]]);
 			return;
 		}
 		
 		if(GetClientTeam(client) == CS_TEAM_SPECTATOR) {
-			class[client] = itemVal;
-			newClass[client] = itemVal;
-			hasClass[client] = true;
+			player_class[client] = itemVal;
+			player_newClass[client] = itemVal;
+			player_hasClass[client] = true;
 			ApplyStats(client);
 			return;
 		}
 		
-		newClass[client] = itemVal;
+		player_newClass[client] = itemVal;
 	}
 	else if(action == MenuAction_End) {
 		CloseHandle(classhandle);
@@ -1132,13 +1274,14 @@ public ChangeClientsClasses() {
 			return;
 		}
 		
-		if(class[client] == newClass[client]) {
+		if(player_class[client] == player_newClass[client]) {
 			return;
 		}
 		
-		class[client] = newClass[client];
-		hasClass[client] = true;
+		player_class[client] = player_newClass[client];
+		player_hasClass[client] = true;
 		ApplyStats(client);
+		GiveWeapons(client);
 	} 
 }
 
@@ -1164,7 +1307,7 @@ public MainMenu_Handler(Handle:classhandle, MenuAction:action, client, position)
 		switch (itemVal) {
 			case 1: ChooseClass_Menu(client, 0);
 			case 2: ClassesDescription_Menu(client, 0);
-			//case 3: ItemsDescription_Menu(client, 0);
+			case 3: ItemsDescription_Menu(client, 0);
 			case 4: ServerDescription_Menu(client);
 			case 5: Contact_Menu(client);
 		}
@@ -1249,7 +1392,7 @@ public Action:DescriptionBasic_Menu(client, args) {
 	new Handle:menu = CreateMenu(DesctiptionBasic_Handler);
 	SetMenuTitle(menu, "Wybierz Klase:");
 	new String:buffer[8];
-	for (new i = 1; i <= numberOfClasses; i++) {
+	for (new i = 1; i <= class_numberOfClasses; i++) {
 		Format(buffer, sizeof(buffer), "%d", i);
 		AddMenuItem(menu, buffer, class_name[i][pos_basic]);
 	}
@@ -1269,12 +1412,12 @@ public DesctiptionBasic_Handler(Handle:classhandle, MenuAction:action, client, p
 		ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 		
 		new String:desc[DESCLENEXTENDED];
-		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_class_skill_used");
+		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 		if (classForward != INVALID_FUNCTION) {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_basic], class_intelligence[itemVal][pos_basic], class_health[itemVal][pos_basic], class_damage[itemVal][pos_basic], class_resistance[itemVal][pos_basic], class_stamina[itemVal][pos_basic], weapons, class_description[itemVal][pos_basic]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_basic], class_intelligence[itemVal][pos_basic], class_health[itemVal][pos_basic], class_damage[itemVal][pos_basic], class_resistance[itemVal][pos_basic], class_trim[itemVal][pos_basic], weapons, class_description[itemVal][pos_basic]);
 		}
 		else {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_basic], class_intelligence[itemVal][pos_basic], class_health[itemVal][pos_basic], class_damage[itemVal][pos_basic], class_resistance[itemVal][pos_basic], class_stamina[itemVal][pos_basic], weapons, class_description[itemVal][pos_basic]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_basic], class_intelligence[itemVal][pos_basic], class_health[itemVal][pos_basic], class_damage[itemVal][pos_basic], class_resistance[itemVal][pos_basic], class_trim[itemVal][pos_basic], weapons, class_description[itemVal][pos_basic]);
 		}
 		
 		new Handle:menu = CreateMenu(DescriptionBasicBack_Handler);
@@ -1310,7 +1453,7 @@ public Action:DescriptionPro_Menu(client, args) {
 	new Handle:menu = CreateMenu(DescriptionPro_Handler);
 	SetMenuTitle(menu, "Wybierz Klase:");
 	new String:buffer[8];
-	for (new i = 1; i <= numberOfClasses; i++) {
+	for (new i = 1; i <= class_numberOfClasses; i++) {
 		Format(buffer, sizeof(buffer), "%d", i);
 		AddMenuItem(menu, buffer, class_name[i][pos_pro]);
 	}
@@ -1330,12 +1473,12 @@ public DescriptionPro_Handler(Handle:classhandle, MenuAction:action, client, pos
 		ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 		
 		new String:desc[DESCLENEXTENDED];
-		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_class_skill_used");
+		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 		if (classForward != INVALID_FUNCTION) {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_pro], class_intelligence[itemVal][pos_pro], class_health[itemVal][pos_pro], class_damage[itemVal][pos_pro], class_resistance[itemVal][pos_pro], class_stamina[itemVal][pos_pro], weapons, class_description[itemVal][pos_pro]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_pro], class_intelligence[itemVal][pos_pro], class_health[itemVal][pos_pro], class_damage[itemVal][pos_pro], class_resistance[itemVal][pos_pro], class_trim[itemVal][pos_pro], weapons, class_description[itemVal][pos_pro]);
 		}
 		else {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_pro], class_intelligence[itemVal][pos_pro], class_health[itemVal][pos_pro], class_damage[itemVal][pos_pro], class_resistance[itemVal][pos_pro], class_stamina[itemVal][pos_pro], weapons, class_description[itemVal][pos_pro]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_pro], class_intelligence[itemVal][pos_pro], class_health[itemVal][pos_pro], class_damage[itemVal][pos_pro], class_resistance[itemVal][pos_pro], class_trim[itemVal][pos_pro], weapons, class_description[itemVal][pos_pro]);
 		}
 		
 		new Handle:menu = CreateMenu(DescriptionProBack_Handler);
@@ -1373,7 +1516,7 @@ public Action:DescriptionElite_Menu(client, args) {
 	new Handle:menu = CreateMenu(DescriptionElite_Handler);
 	SetMenuTitle(menu, "Wybierz Klase:");
 	new String:buffer[8];
-	for (new i = 1; i <= numberOfClasses; i++) {
+	for (new i = 1; i <= class_numberOfClasses; i++) {
 		Format(buffer, sizeof(buffer), "%d", i);
 		AddMenuItem(menu, buffer, class_name[i][pos_elite]);
 	}
@@ -1394,12 +1537,12 @@ public DescriptionElite_Handler(Handle:classhandle, MenuAction:action, client, p
 		ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 		
 		new String:desc[DESCLENEXTENDED];
-		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_class_skill_used");
+		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 		if (classForward != INVALID_FUNCTION) {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_elite], class_intelligence[itemVal][pos_elite], class_health[itemVal][pos_elite], class_damage[itemVal][pos_elite], class_resistance[itemVal][pos_elite], class_stamina[itemVal][pos_elite], weapons, class_description[itemVal][pos_elite]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_elite], class_intelligence[itemVal][pos_elite], class_health[itemVal][pos_elite], class_damage[itemVal][pos_elite], class_resistance[itemVal][pos_elite], class_trim[itemVal][pos_elite], weapons, class_description[itemVal][pos_elite]);
 		}
 		else {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_elite], class_intelligence[itemVal][pos_elite], class_health[itemVal][pos_elite], class_damage[itemVal][pos_elite], class_resistance[itemVal][pos_elite], class_stamina[itemVal][pos_elite], weapons, class_description[itemVal][pos_elite]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_elite], class_intelligence[itemVal][pos_elite], class_health[itemVal][pos_elite], class_damage[itemVal][pos_elite], class_resistance[itemVal][pos_elite], class_trim[itemVal][pos_elite], weapons, class_description[itemVal][pos_elite]);
 		}
 		
 		new Handle:menu = CreateMenu(DescriptionEliteBack_Handler);
@@ -1437,7 +1580,7 @@ public Action:DescriptionMaster_Menu(client, args) {
 	new Handle:menu = CreateMenu(DescriptionMaster_Handler);
 	SetMenuTitle(menu, "Wybierz Klase:");
 	new String:buffer[8];
-	for (new i = 1; i <= numberOfClasses; i++) {
+	for (new i = 1; i <= class_numberOfClasses; i++) {
 		Format(buffer, sizeof(buffer), "%d", i);
 		AddMenuItem(menu, buffer, class_name[i][pos_master]);
 	}
@@ -1457,12 +1600,12 @@ public DescriptionMaster_Handler(Handle:classhandle, MenuAction:action, client, 
 		ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 		
 		new String:desc[DESCLENEXTENDED];
-		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_class_skill_used");
+		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 		if (classForward != INVALID_FUNCTION) {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_master], class_intelligence[itemVal][pos_master], class_health[itemVal][pos_master], class_damage[itemVal][pos_master], class_resistance[itemVal][pos_master], class_stamina[itemVal][pos_master], weapons, class_description[itemVal][pos_master]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_master], class_intelligence[itemVal][pos_master], class_health[itemVal][pos_master], class_damage[itemVal][pos_master], class_resistance[itemVal][pos_master], class_trim[itemVal][pos_master], weapons, class_description[itemVal][pos_master]);
 		}
 		else {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_master], class_intelligence[itemVal][pos_master], class_health[itemVal][pos_master], class_damage[itemVal][pos_master], class_resistance[itemVal][pos_master], class_stamina[itemVal][pos_master], weapons, class_description[itemVal][pos_master]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_master], class_intelligence[itemVal][pos_master], class_health[itemVal][pos_master], class_damage[itemVal][pos_master], class_resistance[itemVal][pos_master], class_trim[itemVal][pos_master], weapons, class_description[itemVal][pos_master]);
 		}
 		
 		new Handle:menu = CreateMenu(DescriptionMasterBack_Handler);
@@ -1500,7 +1643,7 @@ public Action:DescriptionGod_Menu(client, args) {
 	new Handle:menu = CreateMenu(DescriptionGod_Handler);
 	SetMenuTitle(menu, "Wybierz Klase:");
 	new String:buffer[8];
-	for (new i = 1; i <= numberOfClasses; i++) {
+	for (new i = 1; i <= class_numberOfClasses; i++) {
 		Format(buffer, sizeof(buffer), "%d", i);
 		AddMenuItem(menu, buffer, class_name[i][pos_god]);
 	}
@@ -1520,12 +1663,12 @@ public DescriptionGod_Handler(Handle:classhandle, MenuAction:action, client, pos
 		ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 		
 		new String:desc[DESCLENEXTENDED];
-		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_class_skill_used");
+		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 		if (classForward != INVALID_FUNCTION) {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_god], class_intelligence[itemVal][pos_god], class_health[itemVal][pos_god], class_damage[itemVal][pos_god], class_resistance[itemVal][pos_god], class_stamina[itemVal][pos_god], weapons, class_description[itemVal][pos_god]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_god], class_intelligence[itemVal][pos_god], class_health[itemVal][pos_god], class_damage[itemVal][pos_god], class_resistance[itemVal][pos_god], class_trim[itemVal][pos_god], weapons, class_description[itemVal][pos_god]);
 		}
 		else {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_god], class_intelligence[itemVal][pos_god], class_health[itemVal][pos_god], class_damage[itemVal][pos_god], class_resistance[itemVal][pos_god], class_stamina[itemVal][pos_god], weapons, class_description[itemVal][pos_god]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_god], class_intelligence[itemVal][pos_god], class_health[itemVal][pos_god], class_damage[itemVal][pos_god], class_resistance[itemVal][pos_god], class_trim[itemVal][pos_god], weapons, class_description[itemVal][pos_god]);
 		}
 		
 		new Handle:menu = CreateMenu(DescriptionGodBack_Handler);
@@ -1565,12 +1708,12 @@ public Action:DisplayDescription_Menu(client, itemVal, pos) {
 	ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 	
 	new String:desc[DESCLENEXTENDED];
-	new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_class_skill_used");
+	new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 	if (classForward != INVALID_FUNCTION) {
-		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos], class_intelligence[itemVal][pos], class_health[itemVal][pos], class_damage[itemVal][pos], class_resistance[itemVal][pos], class_stamina[itemVal][pos], weapons, class_description[itemVal][pos]);
+		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos], class_intelligence[itemVal][pos], class_health[itemVal][pos], class_damage[itemVal][pos], class_resistance[itemVal][pos], class_trim[itemVal][pos], weapons, class_description[itemVal][pos]);
 	}
 	else {
-		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos], class_intelligence[itemVal][pos], class_health[itemVal][pos], class_damage[itemVal][pos], class_resistance[itemVal][pos], class_stamina[itemVal][pos], weapons, class_description[itemVal][pos]);
+		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos], class_intelligence[itemVal][pos], class_health[itemVal][pos], class_damage[itemVal][pos], class_resistance[itemVal][pos], class_trim[itemVal][pos], weapons, class_description[itemVal][pos]);
 	}
 	
 	posGlobal[client] = pos;
@@ -1605,49 +1748,128 @@ public DisplayDesctiprion_Menu(Handle:classhandle, MenuAction:action, client, po
 	}
 }
 
+public Action:ItemsDescription_Menu(client, args) {
+	new Handle:menu = CreateMenu(ItemsDescription_Handler);
+	new String:buffer[8];
+	for (new i = 1; i <= item_numberOfItems; i++) {
+		Format(buffer, sizeof(buffer), "%d", i);
+		AddMenuItem(menu, buffer, item_name[i]);
+	}
+	DisplayMenu(menu, client, MENU_TIME_FOREVER);
+	return Plugin_Handled;
+}
+
+public ItemsDescription_Handler(Handle:classhandle, MenuAction:action, client, position) {
+	if (action == MenuAction_Select) {
+		new String:item[32];
+		GetMenuItem(classhandle, position, item, sizeof(item));
+		new itemVal = StringToInt(item);
+		
+		new String:item_desc[128];
+		new String:random[16];
+		Format(random, sizeof(random), "%i-%i", item_minVal[itemVal], item_maxVal[itemVal]);
+		Format(item_desc, sizeof(item_desc), item_description[itemVal]);
+		ReplaceString(item_desc, sizeof(item_desc), "RNG", random);
+		
+		new String:desc[512];
+		new Function:itemForward = GetFunctionByName(item_plugins[itemVal], "cod_itemUsed");
+		if (itemForward != INVALID_FUNCTION) {
+			Format(desc, sizeof(desc), "Item: %s\nZablokowany dla: %s\nOpis: %s\nUżycie umiejętności: Useitem", item_name[itemVal], item_blackList[itemVal], item_desc);
+		}
+		else {
+			Format(desc, sizeof(desc), "Item: %s\nZablokowany dla: %s\nOpis: %s", item_name[itemVal], item_blackList[itemVal], item_desc);
+		}
+		
+		new Handle:menu = CreateMenu(ItemsDescription_Handler2);
+		SetMenuTitle(menu, desc);
+		AddMenuItem(menu, "1", "Lista itemów");
+		DisplayMenu(menu, client, MENU_TIME_FOREVER);
+	}
+	else if (action == MenuAction_End) {
+		CloseHandle(classhandle);
+	}
+}
+
+public ItemsDescription_Handler2(Handle:classhandle, MenuAction:action, client, position) {
+	if (action == MenuAction_Select) {
+		ItemsDescription_Menu(client, 0);
+	}
+	else if (action == MenuAction_End) {
+		CloseHandle(classhandle);
+	}
+}
+
+public Action:ItemDescription(client, args) {
+	if(!player_hasItem[client]) {
+		PrintToChat(client, "Nie posiadasz itemu. Zabij przeciwnika aby go zdobyc.");
+		return Plugin_Handled;
+	}
+	
+	new String:desc[128];
+	new String:random[16];
+	IntToString(player_itemRandomValue[client], random, sizeof(random));
+	Format(desc, sizeof(desc), item_description[player_item[client]]);
+	ReplaceString(desc, sizeof(desc), "RNG", random);
+	
+	PrintToChat(client, "Item: %s.", item_name[player_item[client]]);
+	PrintToChat(client, "Opis: %s.", desc);
+	
+	new Function:itemForward = GetFunctionByName(item_plugins[player_item[client]], "cod_itemUsed");
+	if (itemForward != INVALID_FUNCTION) {
+		PrintToChat(client, "Uzycie umiejetnosci: Useitem.");
+	}
+	
+	return Plugin_Handled;
+}
+
 public Native_RegisterClass(Handle:plugin, args) {
 	if(args < 16) {
 		return;
 	}
-	
-	numberOfClasses++;
-	
-	class_plugins[numberOfClasses] = plugin;
+	class_numberOfClasses++;
+	class_plugins[class_numberOfClasses] = plugin;
 	
 	new String:tempName[NAMELEN];
 	GetNativeString(1, tempName, NAMELEN);
-	Format(class_name[numberOfClasses][pos_basic], NAMELEN, "%s", tempName);
-	Format(class_name[numberOfClasses][pos_pro], NAMELEN, "[Pro] %s", tempName);
-	Format(class_name[numberOfClasses][pos_elite], NAMELEN, "[Elite] %s", tempName);
-	Format(class_name[numberOfClasses][pos_master], NAMELEN, "[Master] %s", tempName);
-	Format(class_name[numberOfClasses][pos_god], NAMELEN, "[God] %s", tempName);
+	Format(class_name[class_numberOfClasses][pos_basic], NAMELEN, "%s", tempName);
+	Format(class_name[class_numberOfClasses][pos_pro], NAMELEN, "[Pro] %s", tempName);
+	Format(class_name[class_numberOfClasses][pos_elite], NAMELEN, "[Elite] %s", tempName);
+	Format(class_name[class_numberOfClasses][pos_master], NAMELEN, "[Master] %s", tempName);
+	Format(class_name[class_numberOfClasses][pos_god], NAMELEN, "[God] %s", tempName);
 	
 	new counter = 0;
 	for (new i = 2; i < 7; i++) {
-		GetNativeString(i, class_description[numberOfClasses][counter], DESCLEN);
-		GetNativeString(i+5, class_weapons[numberOfClasses][counter], DESCLEN);
+		GetNativeString(i, class_description[class_numberOfClasses][counter], DESCLEN);
+		GetNativeString(i+5, class_weapons[class_numberOfClasses][counter], DESCLEN);
 		counter++;
 	}
 	
-	GetNativeArray(12, class_intelligence[numberOfClasses], ADVANCESVALUE);
-	GetNativeArray(13, class_health[numberOfClasses], ADVANCESVALUE);
-	GetNativeArray(14, class_damage[numberOfClasses], ADVANCESVALUE);
-	GetNativeArray(15, class_resistance[numberOfClasses], ADVANCESVALUE);
-	GetNativeArray(16, class_stamina[numberOfClasses], ADVANCESVALUE);
+	GetNativeArray(12, class_intelligence[class_numberOfClasses], ADVANCESVALUE);
+	GetNativeArray(13, class_health[class_numberOfClasses], ADVANCESVALUE);
+	GetNativeArray(14, class_damage[class_numberOfClasses], ADVANCESVALUE);
+	GetNativeArray(15, class_resistance[class_numberOfClasses], ADVANCESVALUE);
+	GetNativeArray(16, class_trim[class_numberOfClasses], ADVANCESVALUE);
 }
 
 public Native_RegisterItem(Handle:plugin, args) {
-	if(args < 4) {
+	if(args < 11) {
 		return;
 	}
 	
-	numberOfItems++;
+	item_numberOfItems++;
 	
-	item_plugins[numberOfItems] = plugin;
-	GetNativeString(1, item_name[numberOfItems], sizeof(item_name[]));
-	GetNativeString(2, item_description[numberOfItems], sizeof(item_description[]));
-	item_minVal[numberOfItems] = GetNativeCell(3);
-	item_maxVal[numberOfItems] = GetNativeCell(4);
+	item_plugins[item_numberOfItems] = plugin;
+	GetNativeString(1, item_name[item_numberOfItems], sizeof(item_name[]));
+	GetNativeString(2, item_description[item_numberOfItems], sizeof(item_description[]));
+	GetNativeString(3, item_weapons[item_numberOfItems], sizeof(item_weapons[]));
+	GetNativeString(4, item_blackList[item_numberOfItems], sizeof(item_blackList[]));
+	item_minVal[item_numberOfItems] = GetNativeCell(5);
+	item_maxVal[item_numberOfItems] = GetNativeCell(6);
+	item_intelligence[item_numberOfItems] = GetNativeCell(7);
+	item_health[item_numberOfItems] = GetNativeCell(8);
+	item_damage[item_numberOfItems] = GetNativeCell(9);
+	item_resistance[item_numberOfItems] = GetNativeCell(10);
+	item_trim[item_numberOfItems] = GetNativeCell(11);
 }
 
 bool:IsValidClient(client) {
