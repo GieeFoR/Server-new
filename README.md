@@ -43,3 +43,4 @@ Pomniejsze rzeczy:
 
 Dodatkowe rzeczy:
 zmienic strcmp na StrEqual
+zoptymalizować sprawdzanie w pluginach klas, czy gracz posiada określoną klasę
