@@ -40,3 +40,6 @@ Pomniejsze rzeczy:
 - ~~Przenoszenie po wejściu do spectate,~~
 - Wyciszyć spectate?,
 - ~~Prędkość poruszania się gracza,~~
+
+Dodatkowe rzeczy:
+zmienic strcmp na StrEqual
