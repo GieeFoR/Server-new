@@ -16,7 +16,7 @@
 
 #define MAXCLASSES 10+1
 #define MAXITEMS 50+1
-#define ADVANCESVALUE 5
+#define PROMOTIONSVALUE 5
 
 #define NAMELEN 32
 #define DESCLEN 128
@@ -38,7 +38,7 @@ new player_item[MAXPLAYERS];
 new player_itemRandomValue[MAXPLAYERS];
 new player_exp[MAXPLAYERS][MAXCLASSES];
 new player_lvl[MAXPLAYERS][MAXCLASSES];
-new player_advance[MAXPLAYERS][MAXCLASSES];
+new player_promotion[MAXPLAYERS][MAXCLASSES];
 new player_stats_points[MAXPLAYERS][MAXCLASSES];
 new player_stats_intelligence[MAXPLAYERS][MAXCLASSES];
 new player_stats_health[MAXPLAYERS][MAXCLASSES];
@@ -48,14 +48,14 @@ new player_stats_trim[MAXPLAYERS][MAXCLASSES];
 
 new class_numberOfClasses = 0;
 new Handle:class_plugins[MAXCLASSES];
-new String:class_name[MAXCLASSES][ADVANCESVALUE][NAMELEN];
-new String:class_description[MAXCLASSES][ADVANCESVALUE][DESCLEN];
-new String:class_weapons[MAXCLASSES][ADVANCESVALUE][WEAPONSLEN];
-new class_intelligence[MAXCLASSES][ADVANCESVALUE];
-new class_health[MAXCLASSES][ADVANCESVALUE];
-new class_damage[MAXCLASSES][ADVANCESVALUE];
-new class_resistance[MAXCLASSES][ADVANCESVALUE];
-new class_trim[MAXCLASSES][ADVANCESVALUE];
+new String:class_name[MAXCLASSES][PROMOTIONSVALUE][NAMELEN];
+new String:class_description[MAXCLASSES][PROMOTIONSVALUE][DESCLEN];
+new String:class_weapons[MAXCLASSES][PROMOTIONSVALUE][WEAPONSLEN];
+new class_intelligence[MAXCLASSES][PROMOTIONSVALUE];
+new class_health[MAXCLASSES][PROMOTIONSVALUE];
+new class_damage[MAXCLASSES][PROMOTIONSVALUE];
+new class_resistance[MAXCLASSES][PROMOTIONSVALUE];
+new class_trim[MAXCLASSES][PROMOTIONSVALUE];
 
 new item_numberOfItems = 0;
 new Handle:item_plugins[MAXITEMS];
@@ -162,13 +162,24 @@ public Plugin:myinfo = {
 
 public APLRes:AskPluginLoad2(Handle:plugin, bool:late, String:error[], err_max) {
 	CreateNative("cod_registerClass", Native_RegisterClass);
+	CreateNative("cod_getPlayerClass", Native_GetPlayerClass);
+	CreateNative("cod_getPlayerPromotion", Native_GetPlayerPromotion);
+	CreateNative("cod_getPlayerMaxHealth", Native_GetPlayerMaxHealth);
+	
+	CreateNative("cod_inflictDamageWithIntelligence", Native_InflictDamageWithIntelligence);
+	
 	CreateNative("cod_registerItem", Native_RegisterItem);
+	
+	CreateNative("cod_getPlayerItem", Native_GetPlayerItem);
 	
 	pluginLoad = late;
 	return APLRes_Success;
 }
 
 public OnPluginStart() {
+	item_name[0] = "Brak";
+	item_description[0] = "Zabij kogoś, aby otrzymać item";
+
 	CreateConVar( "sm_codmod_version", PLUGIN_VERSION, "Plugin version", CVAR_FLAGS | FCVAR_DONTRECORD );
 	cvar_DamageToPlayerMultiplier = CreateConVar("cod_exp_damagemultiplier", "0.2", "Which part of taken damage receive in exp? (0 - to disable)", CVAR_FLAGS, true);
 	cvar_ExpForDamageToHostages = CreateConVar("cod_exp_hostagedamage", "100", "How much exp does a player lose for hurting hostages? (0 - to disable)", CVAR_FLAGS, true);
@@ -206,14 +217,16 @@ public OnPluginStart() {
 	if (pluginLoad) {
 		for (new client = 1; client <= MaxClients; client++) {
 			if(IsValidClient(client)) {
-				CreateTimer(5.0, LoadPlayerData_Timer, client, TIMER_FLAG_NO_MAPCHANGE);
+				CreateTimer(1.5, LoadPlayerData_Timer, client, TIMER_FLAG_NO_MAPCHANGE);
+				CreateTimer(0.1, ChangeTeam_Timer, client, TIMER_FLAG_NO_MAPCHANGE);
 			}
 			
-			//if(IsValidClient(client)) 
+			
+			if(IsValidClient(client)) {
 			//if(IsClientAuthorized(client) && IsClientConnected(client)) {
-			//	SDKHook(client, SDKHook_OnTakeDamage, OnPlayerTakeDamage);
-			//	SDKHook(client, SDKHook_WeaponCanUse, WeaponCanUse);
-			//}
+				SDKHook(client, SDKHook_OnTakeDamage, OnPlayerTakeDamage);
+				SDKHook(client, SDKHook_WeaponCanUse, WeaponCanUse);
+			}
 		}
 	}
 }
@@ -221,8 +234,8 @@ public OnPluginStart() {
 public Events() {
 	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Post);
 	HookEvent("player_death", OnPlayerDeath, EventHookMode_Post);
+	HookEvent("round_start", OnRoundStart, EventHookMode_Post);
 	HookEvent("round_end", OnRoundEnd, EventHookMode_Pre);
-	HookEvent("round_end", OnRoundEndPost, EventHookMode_Post);
 	HookEvent("player_hurt", OnPlayerHurt, EventHookMode_Post);
 	HookEvent("hostage_rescued", OnHostageRescued, EventHookMode_Post);
 	HookEvent("hostage_hurt", OnHostageHurt, EventHookMode_Post);
@@ -239,6 +252,7 @@ public ConsoleCommands() {
 	AddCommandListener(Listener_BuyBlock, "buyrandom");
 	AddCommandListener(Listener_BuyBlock, "autobuy");
 	AddCommandListener(Listener_BuyBlock, "rebuy");
+	AddCommandListener(Listener_DropWeapon, "drop");
 	
 	RegConsoleCmd("sm_stats", AssignStatsPoints_Menu);
 	RegConsoleCmd("sm_staty", AssignStatsPoints_Menu);
@@ -252,11 +266,17 @@ public ConsoleCommands() {
 	RegConsoleCmd("sm_perki", ItemsDescription_Menu);
 	RegConsoleCmd("sm_item", ItemDescription);
 	RegConsoleCmd("sm_perk", ItemDescription);
-	RegConsoleCmd("menu", MainMenu_Menu);
+	RegConsoleCmd("sm_drop", DropItem);
+	RegConsoleCmd("sm_wyrzuc", DropItem);
+	RegConsoleCmd("sm_menu", MainMenu_Menu);
 	RegConsoleCmd("sm_info", ReturnPlayerInfoCommand);
+	RegConsoleCmd("sm_useclass", UseClassSkill);
+	RegConsoleCmd("sm_useitem", UseItem);
+	RegConsoleCmd("sm_useperk", UseItem);
 	
 	RegConsoleCmd("sm_addexp", AddExpCommand);
 	RegConsoleCmd("sm_remexp", RemoveExpCommand);
+	RegConsoleCmd("sm_giveitem", GiveItemCommand);
 }
 
 public OnPluginEnd() {
@@ -272,6 +292,7 @@ public OnPluginEnd() {
 	
 	UnhookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Post);
 	UnhookEvent("player_death", OnPlayerDeath, EventHookMode_Post);
+	UnhookEvent("round_start", OnRoundStart, EventHookMode_Post);
 	UnhookEvent("round_end", OnRoundEnd, EventHookMode_Pre);
 	UnhookEvent("player_hurt", OnPlayerHurt, EventHookMode_Post);
 	UnhookEvent("hostage_rescued", OnHostageRescued, EventHookMode_Post);
@@ -315,18 +336,11 @@ public Action:OnPlayerSpawn(Handle:event, const String:name[], bool:dontBroadcas
 }
 
 public Action:OnPlayerDeath(Handle:event, const String:name[], bool:dontBroadcast) {
-	new victim = GetClientOfUserId(GetEventInt(event, "userid"));
 	new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
 	new bool:headshot = GetEventBool(event, "headshot");
 	
-	new String:victimName[64] = "";
-	//if(IsValidClient(victim) && IsClientConnected(victim))		- na botach nie można expić
-	if (IsClientConnected(victim)) {
-		GetClientName(victim, victimName, sizeof(victimName));
-	}
-	
-	if (!StrEqual(victimName, "")) {
-		PrintToChatAll("Zginal gracz %s", victimName);
+	if(!IsValidClient(attacker)) {
+		return Plugin_Handled;
 	}
 	
 	if(ExpForKill) {
@@ -339,12 +353,24 @@ public Action:OnPlayerDeath(Handle:event, const String:name[], bool:dontBroadcas
 		AddAmountOfExp(attacker, ExpForHeadshot);
 	}
 	CheckExp(attacker);
-	
-	if (IsValidClient(attacker) && IsClientConnected(attacker)) {
-		PrintToChat(attacker, "Posiadany exp: %d", player_exp[attacker]);
-	}
+	GiveItem(attacker, 0);
 	
 	return Plugin_Continue;
+}
+
+public Action:OnRoundStart(Handle:event, const String:name[], bool:dontbroadcast) {
+	ChangeClientsClasses();
+	for (new client = 1; client < MaxClients; client++) {
+		if(!IsValidClient(client)) {
+			continue;
+		}
+		
+		if(player_stats_points[client][player_class[client]] <= 0) {
+			continue;
+		}
+		
+		AssignStatsPoints_Menu(client, 0);
+	}
 }
 
 public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontbroadcast) {
@@ -359,7 +385,7 @@ public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontbroadcast) 
 			if(!player_hasClass[client] || GetClientTeam(client) == CS_TEAM_SPECTATOR) {
 				continue;
 			}
-	
+			
 			if(GetClientTeam(client) == winners) {
 				PrintToChat(client, "[COD] %t", "Exp RoundWon Message", expForRoundWon);
 				AddAmountOfExp(client, expForRoundWon);
@@ -373,40 +399,24 @@ public Action:OnRoundEnd(Handle:event, const String:name[], bool:dontbroadcast) 
 	return Plugin_Continue;
 }
 
-public Action:OnRoundEndPost(Handle:event, const String:name[], bool:dontbroadcast) {
-	ChangeClientsClasses();
-	return Plugin_Continue;
-}
-
 public Action:OnPlayerHurt(Handle:event, const String:name[], bool:dontbroadcast) {
 	new victim = GetClientOfUserId(GetEventInt(event, "userid"));
 	new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
 	new damage = GetEventInt(event, "dmg_health");
 	
-	PrintToChat(attacker, "Powinno dodać exp 1");
-	
-	//	if(!IsValidClient(victim) || !IsValidClient(attacker)) {		- na botach nie można expić
-	if (!IsValidClient(attacker)) {
+	if(!IsValidClient(victim) || !IsValidClient(attacker)) {
 		return Plugin_Handled;
 	}
 	
-	PrintToChat(attacker, "Powinno dodać exp 2");
-	
-	if(!player_hasClass[victim] || GetClientTeam(victim) == CS_TEAM_SPECTATOR) {
+	if(!player_hasClass[attacker] || GetClientTeam(attacker) == CS_TEAM_SPECTATOR) {
 		return Plugin_Handled;
 	}
 	
-	PrintToChat(attacker, "Powinno dodać exp 3");
-	
-	if (GetClientTeam(victim) == GetClientTeam(attacker)) {
+	if(GetClientTeam(victim) == GetClientTeam(attacker)) {
 		return Plugin_Handled;
 	}
 	
-	PrintToChat(attacker, "Powinno dodać exp 4");
-	
-	PrintToChat(attacker, "Zadales %i DMG", damage);
-	AddExpByDMG(attacker, damage);
-	
+	AddExpByDMG(attacker, damage, player_lvl[victim][player_class[victim]] - player_lvl[attacker][player_class[attacker]]);
 	return Plugin_Continue;
 }
 
@@ -504,6 +514,7 @@ public Action:Listener_JoinTeam(client, const String:command[], args) {
 		PrintToChat(client, "Aby dolaczyc do rozgrywki musisz miec wybrana klase");
 		return Plugin_Handled;
 	}
+	
 	return Plugin_Continue;
 }
 
@@ -515,34 +526,108 @@ public Action:Listener_BuyBlock(client, const String:command[], args) {
 	return Plugin_Handled;
 }
 
+public Action:Listener_DropWeapon(client, const String:command[], args) {
+	if(!IsValidClient(client)) {
+		return Plugin_Handled;
+	}
+	
+	new clientWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+	new String:weaponName[32];
+	GetEdictClassname(clientWeapon, weaponName, sizeof(weaponName));
+	
+	
+	if(!strcmp(weaponName, "weapon_c4")) {
+		return Plugin_Continue;
+	}
+	
+	return Plugin_Stop;
+}
+
 public OnClientPutInServer(client) {
 	LoadPlayerData(client);
 	SDKHook(client, SDKHook_OnTakeDamage, OnPlayerTakeDamage);
 	SDKHook(client, SDKHook_WeaponCanUse, WeaponCanUse);
-	//SDKHook(client, SDKHook_WeaponDrop, WeaponDrop);
+	
+	ClientCommand(client, "hud_scaling 0.75");	//ciekawe czy to zadziala
 }
 
 public OnClientDisconnect(client) {
 	SavePlayerData(client);
 	SDKUnhook(client, SDKHook_OnTakeDamage, OnPlayerTakeDamage);
 	SDKUnhook(client, SDKHook_WeaponCanUse, WeaponCanUse);
-	//SDKUnhook(client, SDKHook_WeaponDrop, WeaponDrop);
+	
+	new Function:classForward;
+	classForward = GetFunctionByName(class_plugins[player_class[client]], "cod_classDisabled");
+	if (classForward != INVALID_FUNCTION) {
+		Call_StartFunction(class_plugins[player_class[client]], classForward);
+		Call_PushCell(client);
+		Call_Finish();
+	}
+	
+	new Function:itemForward;
+	itemForward = GetFunctionByName(item_plugins[player_item[client]], "cod_itemDisabled");
+	if (itemForward != INVALID_FUNCTION) {
+		Call_StartFunction(item_plugins[player_item[client]], itemForward);
+		Call_PushCell(client);
+		Call_Finish();
+	}
+	
+	player_hasClass[client] = false;
+	player_hasItem[client] = false;
+	
+	player_class[client] = 0;
+	player_newClass[client] = 0;
+	player_item[client] = 0;
+	player_itemRandomValue[client] = 0;
+}
+
+public OnMapEnd() {
+	for (new client = 1; client < MaxClients; client++) {
+		new Function:classForward;
+		classForward = GetFunctionByName(class_plugins[player_class[client]], "cod_classDisabled");
+		if (classForward != INVALID_FUNCTION) {
+			Call_StartFunction(class_plugins[player_class[client]], classForward);
+			Call_PushCell(client);
+			Call_Finish();
+		}
+		
+		new Function:itemForward;
+		itemForward = GetFunctionByName(item_plugins[player_item[client]], "cod_itemDisabled");
+		if (itemForward != INVALID_FUNCTION) {
+			Call_StartFunction(item_plugins[player_item[client]], itemForward);
+			Call_PushCell(client);
+			Call_Finish();
+		}
+		
+		player_hasClass[client] = false;
+		player_hasItem[client] = false;
+		
+		player_class[client] = 0;
+		player_newClass[client] = 0;
+		player_item[client] = 0;
+		player_itemRandomValue[client] = 0;
+	}
+}
+
+public OnMapStart() {
+	AddFileToDownloadsTable("sound/cod/levelup.mp3");
+	AddFileToDownloadsTable("sound/cod/promotion.mp3");
+	AutoExecConfig(true, "codmod");
 }
 
 public Action:OnPlayerTakeDamage(victim, &attacker, &inflictor, &Float:damage, &damagetype) {
-	/*	//zakomentowane na potrzeby testowania na botach
 	if(!IsValidClient(victim) || !IsValidClient(attacker)) {
 		return Plugin_Continue;
-	}*/
+	}
 	
 	if (GetClientTeam(victim) == GetClientTeam(attacker)) {
 		return Plugin_Continue;
 	}
 	
-	new attacker_damage = player_stats_damage[attacker][player_class[attacker]] + class_damage[player_class[attacker]][player_advance[attacker][player_class[attacker]]] + item_damage[player_item[attacker]];
-	new victim_resistance = player_stats_resistance[victim][player_class[victim]] + class_resistance[player_class[victim]][player_advance[victim][player_class[victim]]] + item_resistance[player_item[victim]];
+	new Float:attacker_damage = float(player_stats_damage[attacker][player_class[attacker]] + class_damage[player_class[attacker]][player_promotion[attacker][player_class[attacker]]] + item_damage[player_item[attacker]]);
+	new Float:victim_resistance = float(player_stats_resistance[victim][player_class[victim]] + class_resistance[player_class[victim]][player_promotion[victim][player_class[victim]]] + item_resistance[player_item[victim]]);
 	
-	damage = damage * (1.0 + (attacker_damage - victim_resistance));
+	damage = (damage * (1.0 + attacker_damage/50.0)) / (1.0 + victim_resistance/50.0);
 	return Plugin_Changed;
 }
 
@@ -558,8 +643,7 @@ public Action:WeaponCanUse(client, weapon) {
 	new String:weapons[WEAPONSLEN];
 	GetEdictClassname(weapon, weapons, sizeof(weapons));
 	new weaponindex = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
-	switch (weaponindex)
-	{
+	switch (weaponindex) {
 		case 60:strcopy(weapons, sizeof(weapons), "weapon_m4a1_silencer");
 		case 61:strcopy(weapons, sizeof(weapons), "weapon_usp_silencer");
 		case 63:strcopy(weapons, sizeof(weapons), "weapon_cz75a");
@@ -576,9 +660,8 @@ public Action:WeaponCanUse(client, weapon) {
 		case 516:strcopy(weapons, sizeof(weapons), "weapon_knife_push");
 	}
 	
-	
 	new String:weaponsClass[10][32];
-	ExplodeString(class_weapons[player_class[client]][player_advance[client][player_class[client]]], "#", weaponsClass, sizeof(weaponsClass), sizeof(weaponsClass[]));
+	ExplodeString(class_weapons[player_class[client]][player_promotion[client][player_class[client]]], "#", weaponsClass, sizeof(weaponsClass), sizeof(weaponsClass[]));
 	for (new i = 0; i < sizeof(weaponsClass); i++) {
 		if (StrEqual(weaponsClass[i], weapons)) {
 			return Plugin_Continue;
@@ -619,7 +702,7 @@ public Action:GiveWeapons(client) {
 	}
 	
 	new String:weaponsClass[10][32];
-	ExplodeString(class_weapons[player_class[client]][player_advance[client][player_class[client]]], "#", weaponsClass, sizeof(weaponsClass), sizeof(weaponsClass[]));
+	ExplodeString(class_weapons[player_class[client]][player_promotion[client][player_class[client]]], "#", weaponsClass, sizeof(weaponsClass), sizeof(weaponsClass[]));
 	for (new i = 0; i < sizeof(weaponsClass); i++) {
 		if (!StrEqual(weaponsClass[i], "")) {
 			GivePlayerItem(client, weaponsClass[i]);
@@ -637,8 +720,7 @@ public Action:GiveWeapons(client) {
 	return Plugin_Continue;
 }
 
-public Action:TeamMenuHook(UserMsg:msg_id, Protobuf:msg, players[], playersNum, bool:reliable, bool:init)
-{
+public Action:TeamMenuHook(UserMsg:msg_id, Protobuf:msg, players[], playersNum, bool:reliable, bool:init) {
 	new String:buffermsg[64];
 	PbReadString(msg, "name", buffermsg, sizeof(buffermsg));
 	
@@ -689,7 +771,7 @@ public SavePlayerData(client) {
 		
 		KvSetNum(DataBase, "exp", player_exp[client][i]);
 		KvSetNum(DataBase, "lvl", player_lvl[client][i]);
-		KvSetNum(DataBase, "advance", player_advance[client][i]);
+		KvSetNum(DataBase, "promotion", player_promotion[client][i]);
 		KvSetNum(DataBase, "points", player_stats_points[client][i]);
 		KvSetNum(DataBase, "intelligence", player_stats_intelligence[client][i]);
 		KvSetNum(DataBase, "health", player_stats_health[client][i]);
@@ -736,7 +818,7 @@ public LoadPlayerData(client) {
 		
 		player_exp[client][i] = KvGetNum(DataBase, "exp");
 		player_lvl[client][i] = KvGetNum(DataBase, "lvl", 1);
-		player_advance[client][i] = KvGetNum(DataBase, "advance");
+		player_promotion[client][i] = KvGetNum(DataBase, "promotion");
 		player_stats_points[client][i] = KvGetNum(DataBase, "points");
 		player_stats_intelligence[client][i] = KvGetNum(DataBase, "intelligence");
 		player_stats_health[client][i] = KvGetNum(DataBase, "health");
@@ -756,10 +838,10 @@ public Action:ReturnPlayerInfoCommand(client, args) {
 	}
 	
 	if (args < 1) {
-		PrintToChat(client, "Twoja klasa: %s", class_name[player_class[client]][player_advance[client][player_class[client]]]);
+		PrintToChat(client, "Twoja klasa: %s", class_name[player_class[client]][player_promotion[client][player_class[client]]]);
 		PrintToChat(client, "Twoj exp: %d", player_exp[client][player_class[client]]);
 		PrintToChat(client, "Twoj lvl: %d", player_lvl[client][player_class[client]]);
-		PrintToChat(client, "Twoj awans: %d", player_advance[client]);
+		PrintToChat(client, "Twoj awans: %d", player_promotion[client]);
 		PrintToChat(client, "Twoje punkty do rozdania: %d", player_stats_points[client][player_class[client]]);
 		PrintToChat(client, "Twoja inteligencja: %d", player_stats_intelligence[client][player_class[client]]);
 		PrintToChat(client, "Twoje zdrowie: %d", player_stats_health[client][player_class[client]]);
@@ -767,6 +849,44 @@ public Action:ReturnPlayerInfoCommand(client, args) {
 		PrintToChat(client, "Twoja odpornosc: %d", player_stats_resistance[client][player_class[client]]);
 		PrintToChat(client, "Twoja kondycja: %d", player_stats_trim[client][player_class[client]]);
 	}
+	return Plugin_Continue;
+}
+
+public Action:UseClassSkill(client, args) {
+	if (!IsValidClient(client)) {
+		return Plugin_Handled;
+	}
+	
+	if(!IsPlayerAlive(client)) {
+		return Plugin_Handled;
+	}
+	
+	new Function:classForward = GetFunctionByName(class_plugins[player_class[client]], "cod_classSkillUsed");
+	if (classForward != INVALID_FUNCTION) {
+		Call_StartFunction(class_plugins[player_class[client]], classForward);
+		Call_PushCell(client);
+		Call_Finish();
+	}
+	
+	return Plugin_Continue;
+}
+
+public Action:UseItem(client, args) {
+	if (!IsValidClient(client)) {
+		return Plugin_Handled;
+	}
+	
+	if (!IsPlayerAlive(client)) {
+		return Plugin_Handled;
+	}
+	
+	new Function:itemForward = GetFunctionByName(item_plugins[player_item[client]], "cod_itemUsed");
+	if (itemForward != INVALID_FUNCTION) {
+		Call_StartFunction(item_plugins[player_item[client]], itemForward);
+		Call_PushCell(client);
+		Call_Finish();
+	}
+	
 	return Plugin_Continue;
 }
 
@@ -835,22 +955,128 @@ public Action:AddAmountOfExp(client, amount) {
 		}
 	}
 	
+	if(StrEqual(item_name[player_item[client]], "Podręcznik Expienia")) {
+		amount *= 1.5;
+	}
+	
 	player_exp[client][player_class[client]] += amount;
 	CheckExp(client);
 	
 	return Plugin_Continue;
 }
 
-public Action:AddExpByDMG(client, damage) {
+public Action:AddExpByDMG(client, damage, lvlDifference) {
 	if(!IsValidClient(client)) {
 		return Plugin_Handled;
 	}
 	
-	if(damageMultiplier) {
-		player_exp[client][player_class[client]] += RoundToFloor(damage*damageMultiplier);
-		CheckExp(client);
+	if(!damageMultiplier) {
+		return Plugin_Continue;
 	}
 	
+	new Float:lvlFactor;
+	if(lvlDifference > 0) {
+		lvlFactor = 1.0 + lvlDifference / 100.0;
+	}
+	else {
+		lvlFactor = 1.0;
+	}
+	
+	if(StrEqual(item_name[player_item[client]], "Podręcznik Expienia")) {
+		player_exp[client][player_class[client]] += RoundToFloor(damage*damageMultiplier*1.5*lvlFactor);
+	}
+	else {
+		player_exp[client][player_class[client]] += RoundToFloor(damage*damageMultiplier*lvlFactor);
+	}
+	CheckExp(client);
+	return Plugin_Continue;
+}
+
+public Action:GiveItemCommand(client, args) {
+	new String:arg[8];
+	GetCmdArg(1, arg, sizeof(arg));
+	GiveItem(client, StringToInt(arg));
+	
+	return Plugin_Continue;
+}
+
+public Action:GiveItem(client, itemNumber) {
+	if(!IsValidClient(client)) {
+		return Plugin_Handled;
+	}
+	
+	if(player_hasItem[client]) {
+		return Plugin_Continue;
+	}
+	
+	new bool:correctItem;
+	new random;
+	new String:blacklist[5][32];
+	
+	do {
+		correctItem = true;
+		if(itemNumber == 0) {
+			random = GetRandomInt(1, item_numberOfItems);
+		}
+		else {
+			random = itemNumber;
+		}
+		
+		ExplodeString(item_blackList[random], "#", blacklist, sizeof(blacklist), sizeof(blacklist[]));
+		for (new i = 0; i < 5; i++) {
+			if(StrEqual(blacklist[i], class_name[player_class[client]][0])) {
+				correctItem = false;
+				itemNumber = 0;
+			}
+		}
+	} while (!correctItem);
+	
+	player_item[client] = random;
+	player_hasItem[client] = true;
+	
+	new Function:itemForward;
+	itemForward = GetFunctionByName(item_plugins[player_item[client]], "cod_itemEnabled");
+	if (itemForward != INVALID_FUNCTION) {
+		Call_StartFunction(item_plugins[player_item[client]], itemForward);
+		Call_PushCell(client);
+		Call_Finish();
+	}
+	
+	new Function:itemValueForward;
+	itemValueForward = GetFunctionByName(item_plugins[player_item[client]], "cod_returnItemValue");
+	if (itemValueForward != INVALID_FUNCTION) {
+		Call_StartFunction(item_plugins[player_item[client]], itemValueForward);
+		Call_PushCell(client);
+		Call_Finish(player_itemRandomValue[client]);
+	}
+	else {
+		player_itemRandomValue[client] = 0;
+	}
+	return Plugin_Continue;
+}
+
+public Action:DropItem(client, args) {
+	if(!IsValidClient(client)) {
+		return Plugin_Handled;
+	}
+	
+	if(!player_hasItem[client]) {
+		PrintToChat(client, "Nie posiadasz itemu do wyrzucenia");
+		return Plugin_Continue;
+	}
+	
+	new Function:itemForward;
+	itemForward = GetFunctionByName(item_plugins[player_item[client]], "cod_itemDisabled");
+	if (itemForward != INVALID_FUNCTION) {
+		Call_StartFunction(item_plugins[player_item[client]], itemForward);
+		Call_PushCell(client);
+		Call_Finish();
+	}
+	
+	player_hasItem[client] = false;
+	PrintToChat(client, "Wyrzuciles %s", item_name[player_item[client]]);
+	player_item[client] = 0;
+	player_itemRandomValue[client] = 0;
 	return Plugin_Continue;
 }
 
@@ -881,7 +1107,7 @@ public Action:CheckExp(client) {
 			PrintToChat(client, "[COD] %t", "Lvl Lost Message", player_lvl[client][player_class[client]]);
 		}
 		
-		CheckAdvance(client);
+		CheckPromotion(client);
 		CheckPoints(client);
 		return Plugin_Continue;
 	}
@@ -897,40 +1123,75 @@ public Action:CheckExp(client) {
 	if(counter != 0) {
 		player_lvl[client][player_class[client]] += counter;
 		PrintToChat(client, "[COD] %t", "Lvl Gained Message", player_lvl[client][player_class[client]]);
+		ClientCommand(client, "play *cod/levelup.mp3");
 		
 		if(player_lvl[client][player_class[client]] == sizeof(expTable)-1) {
 			PrintToChat(client, "[COD] %t", "Lvl GainedMaxLVL Message");
 		}
 	}
 	
-	CheckAdvance(client);
+	CheckPromotion(client);
 	CheckPoints(client);
+	AssignStatsPoints_Menu(client, 0);
 	return Plugin_Continue;
 }
 
-public Action:CheckAdvance(client) {
+public Action:CheckPromotion(client) {
 	if(!IsValidClient(client)) {
 		return Plugin_Handled;
 	}
 	
 	if(player_lvl[client][player_class[client]] >= god) {
-		player_advance[client][player_class[client]] = pos_god;
-		return Plugin_Continue;
+		if(player_promotion[client][player_class[client]] < pos_god) {
+			//awans
+			ClientCommand(client, "play *cod/promotion.mp3");
+		}
+		player_promotion[client][player_class[client]] = pos_god;
 	}
 	else if(player_lvl[client][player_class[client]] >= master) {
-		player_advance[client][player_class[client]] = pos_master;
-		return Plugin_Continue;
+		if(player_promotion[client][player_class[client]] < pos_master) {
+			//awans
+			ClientCommand(client, "play *cod/promotion.mp3");
+		}
+		else if (player_promotion[client][player_class[client]] > pos_master){
+			//degrad
+		}
+		player_promotion[client][player_class[client]] = pos_master;
 	}
 	else if(player_lvl[client][player_class[client]] >= elite) {
-		player_advance[client][player_class[client]] = pos_elite;
-		return Plugin_Continue;
+		if(player_promotion[client][player_class[client]] < pos_elite) {
+			//awans
+			ClientCommand(client, "play *cod/promotion.mp3");
+		}
+		else if (player_promotion[client][player_class[client]] > pos_elite){
+			//degrad
+		}
+		player_promotion[client][player_class[client]] = pos_elite;
 	}
 	else if(player_lvl[client][player_class[client]] >= pro) {
-		player_advance[client][player_class[client]] = pos_pro;
-		return Plugin_Continue;
+		if(player_promotion[client][player_class[client]] < pos_pro) {
+			//awans
+			ClientCommand(client, "play *cod/promotion.mp3");
+		}
+		else if (player_promotion[client][player_class[client]] > pos_pro){
+			//degrad
+		}
+		player_promotion[client][player_class[client]] = pos_pro;
 	}
 	else {
-		player_advance[client][player_class[client]] = pos_basic;
+		if (player_promotion[client][player_class[client]] > pos_basic){
+			//degrad
+		}
+		player_promotion[client][player_class[client]] = pos_basic;
+	}
+	
+	new Function:classForward;
+	classForward = GetFunctionByName(class_plugins[player_class[client]], "cod_classEnabled");
+	if (classForward != INVALID_FUNCTION) {
+		Call_StartFunction(class_plugins[player_class[client]], classForward);
+		Call_PushCell(client);
+		Call_PushCell(player_promotion[client][player_class[client]]);
+		Call_Finish();
 	}
 	
 	return Plugin_Continue;
@@ -1008,8 +1269,8 @@ public Action:ApplyStats(client) {
 		return Plugin_Handled;
 	}
 	
-	SetEntData(client, FindDataMapInfo(client, "m_iHealth"), HEALTH_BASE + (player_stats_health[client][player_class[client]] * HEALTH_MULTIPLIER) + class_health[player_class[client]][player_advance[client][player_class[client]]] + item_health[player_item[client]]);
-	SetEntPropFloat(client, Prop_Data, "m_flLaggedMovementValue", TRIM_BASE + ((player_stats_trim[client][player_class[client]] + class_trim[player_class[client]][player_advance[client][player_class[client]]] + item_trim[player_item[client]]) * TRIM_MULTIPLIER));
+	SetEntData(client, FindDataMapInfo(client, "m_iHealth"), HEALTH_BASE + (player_stats_health[client][player_class[client]] * HEALTH_MULTIPLIER) + class_health[player_class[client]][player_promotion[client][player_class[client]]] + item_health[player_item[client]]);
+	SetEntPropFloat(client, Prop_Data, "m_flLaggedMovementValue", TRIM_BASE + ((player_stats_trim[client][player_class[client]] + class_trim[player_class[client]][player_promotion[client][player_class[client]]] + item_trim[player_item[client]]) * TRIM_MULTIPLIER));
 	
 	return Plugin_Continue;
 }
@@ -1022,7 +1283,7 @@ public Action:AssignStatsPoints_Menu(client, args) {
 	new String:desc[128];
 	new Handle:menu = CreateMenu(AssignStatsPoints_Handler);
 	
-	Format(desc, sizeof(desc), "Przydziel punkty (%d):", player_stats_points[client]);
+	Format(desc, sizeof(desc), "Przydziel punkty (%d):", player_stats_points[client][player_class[client]]);
 	SetMenuTitle(menu, desc);
 	
 	if (stats_assignAmount[stats_selectedAmount[client]] == 0) {
@@ -1033,19 +1294,19 @@ public Action:AssignStatsPoints_Menu(client, args) {
 	}
 	AddMenuItem(menu, "1", desc);
 	
-	Format(desc, sizeof(desc), "Inteligencja: %d/%d", player_stats_intelligence[client], stats_limit[pos_intelligence]);
+	Format(desc, sizeof(desc), "Inteligencja: %d/%d", player_stats_intelligence[client][player_class[client]], stats_limit[pos_intelligence]);
 	AddMenuItem(menu, "2", desc);
 	
-	Format(desc, sizeof(desc), "Zdrowie: %d/%d ", player_stats_health[client], stats_limit[pos_health]);
+	Format(desc, sizeof(desc), "Zdrowie: %d/%d ", player_stats_health[client][player_class[client]], stats_limit[pos_health]);
 	AddMenuItem(menu, "3", desc);
 	
-	Format(desc, sizeof(desc), "Obrazenia: %d/%d", player_stats_damage[client], stats_limit[pos_damage]);
+	Format(desc, sizeof(desc), "Obrazenia: %d/%d", player_stats_damage[client][player_class[client]], stats_limit[pos_damage]);
 	AddMenuItem(menu, "4", desc);
 	
-	Format(desc, sizeof(desc), "Wytrzymalosc: %d/%d", player_stats_resistance[client], stats_limit[pos_resistance]);
+	Format(desc, sizeof(desc), "Wytrzymalosc: %d/%d", player_stats_resistance[client][player_class[client]], stats_limit[pos_resistance]);
 	AddMenuItem(menu, "5", desc);
 	
-	Format(desc, sizeof(desc), "Kondycja: %d/%d", player_stats_trim[client], stats_limit[pos_trim]);
+	Format(desc, sizeof(desc), "Kondycja: %d/%d", player_stats_trim[client][player_class[client]], stats_limit[pos_trim]);
 	AddMenuItem(menu, "6", desc);
 	
 	Format(desc, sizeof(desc), "Reset punktow");
@@ -1217,6 +1478,7 @@ public ResetPoints(client) {
 	player_stats_damage[client][player_class[client]] = 0;
 	player_stats_resistance[client][player_class[client]] = 0;
 	player_stats_trim[client][player_class[client]] = 0;
+	AssignStatsPoints_Menu(client, 0);
 }
 
 public Action:ChooseClass_Menu(client, args) {
@@ -1232,7 +1494,7 @@ public Action:ChooseClass_Menu(client, args) {
 	
 	new String:temp[3];
 	for (new i = 1; i <= class_numberOfClasses; i++) {
-		Format(desc, sizeof(desc), "%s [%dlvl]", class_name[i][player_advance[client][i]], player_lvl[client][i]);
+		Format(desc, sizeof(desc), "%s [%dlvl]", class_name[i][player_promotion[client][i]], player_lvl[client][i]);
 		IntToString(i, temp, sizeof(temp));
 		AddMenuItem(menu, temp, desc);
 	}
@@ -1249,18 +1511,79 @@ public ChooseClass_Handler(Handle:classhandle, MenuAction:action, client, positi
 		new itemVal = StringToInt(item);
 		
 		if(player_class[client] == itemVal) {
-			PrintToChat(client, "Aktualnie korzystasz z klasy: %s", class_name[player_class[client]][player_advance[client][player_class[client]]]);
+			PrintToChat(client, "Aktualnie korzystasz z klasy: %s", class_name[player_class[client]][player_promotion[client][player_class[client]]]);
 			return;
 		}
 		
+		if(!player_hasClass[client]) {
+			CreateTimer(0.5, PlayerInfo_HUD, client, TIMER_REPEAT);
+		}
+		
 		if(GetClientTeam(client) == CS_TEAM_SPECTATOR) {
-			player_class[client] = itemVal;
+			new state;
+			new Function:classForward;
+			classForward = GetFunctionByName(class_plugins[itemVal], "cod_classEnabled");
+			if (classForward != INVALID_FUNCTION) {
+				Call_StartFunction(class_plugins[itemVal], classForward);
+				Call_PushCell(client);
+				Call_PushCell(0);
+				Call_Finish(state);
+			}
+			if(state == 4) {
+				classForward = GetFunctionByName(class_plugins[itemVal], "cod_classDisabled");
+				if (classForward != INVALID_FUNCTION) {
+					Call_StartFunction(class_plugins[itemVal], classForward);
+					Call_PushCell(client);
+					Call_Finish();
+				}
+				
+				return;
+			}
+			
 			player_newClass[client] = itemVal;
 			player_hasClass[client] = true;
+			
+			classForward = GetFunctionByName(class_plugins[player_newClass[client]], "cod_classEnabled");
+			if (classForward != INVALID_FUNCTION) {
+				Call_StartFunction(class_plugins[player_newClass[client]], classForward);
+				Call_PushCell(client);
+				Call_PushCell(player_promotion[client][player_newClass[client]]);
+				Call_Finish();
+			}
+			
+			if(player_class[client] > 0) {
+				classForward = GetFunctionByName(class_plugins[player_class[client]], "cod_classDisabled");
+				if (classForward != INVALID_FUNCTION) {
+					Call_StartFunction(class_plugins[player_class[client]], classForward);
+					Call_PushCell(client);
+					Call_Finish();
+				}
+			}
+			
+			player_class[client] = player_newClass[client];
+			
 			ApplyStats(client);
 			return;
 		}
 		
+		new Function:classForward;
+		new state;
+		classForward = GetFunctionByName(class_plugins[itemVal], "cod_classEnabled");
+		if (classForward != INVALID_FUNCTION) {
+			Call_StartFunction(class_plugins[itemVal], classForward);
+			Call_PushCell(client);
+			Call_PushCell(player_promotion[client][itemVal]);
+			Call_Finish(state);
+		}
+		if(state == 4) {
+			classForward = GetFunctionByName(class_plugins[itemVal], "cod_classDisabled");
+			if (classForward != INVALID_FUNCTION) {
+				Call_StartFunction(class_plugins[itemVal], classForward);
+				Call_PushCell(client);
+				Call_Finish();
+			}
+			return;
+		}
 		player_newClass[client] = itemVal;
 	}
 	else if(action == MenuAction_End) {
@@ -1278,11 +1601,50 @@ public ChangeClientsClasses() {
 			return;
 		}
 		
+		new Function:classForward;
+		classForward = GetFunctionByName(class_plugins[player_newClass[client]], "cod_classEnabled");
+		if (classForward != INVALID_FUNCTION) {
+			Call_StartFunction(class_plugins[player_newClass[client]], classForward);
+			Call_PushCell(client);
+			Call_PushCell(player_promotion[client][player_newClass[client]]);
+			Call_Finish();
+		}
+		
+		classForward = GetFunctionByName(class_plugins[player_class[client]], "cod_classDisabled");
+		if (classForward != INVALID_FUNCTION) {
+			Call_StartFunction(class_plugins[player_class[client]], classForward);
+			Call_PushCell(client);
+			Call_Finish();
+		}
+		
 		player_class[client] = player_newClass[client];
 		player_hasClass[client] = true;
 		ApplyStats(client);
 		GiveWeapons(client);
 	} 
+}
+
+public Action:PlayerInfo_HUD(Handle:timer, client) {
+	if(!IsValidClient(client)) {
+		return Plugin_Handled;
+	}
+	
+	if (IsPlayerAlive(client)) {
+		PrintHintText(client, "[Klasa: %s]\n[Xp: %i | Lv: %i]\n[Item: %s]", class_name[player_class[client]][player_promotion[client][player_class[client]]], player_exp[client][player_class[client]], player_lvl[client][player_class[client]], item_name[player_item[client]]);
+		//PrintHintText(client, "<font color='#008000'>[Klasa: <b>%s</b>]\n[Xp: <b>%i</b> | Lv: <b>%i</b>]\n[Item: <b>%s</b>]</font>", class_name[player_class[client]][player_promotion[client][player_class[client]]], player_exp[client][player_class[client]], player_lvl[client][player_class[client]], item_name[player_item[client]]);
+	}
+	else {
+		new spect = GetEntProp(client, Prop_Send, "m_iObserverMode");
+		if (spect == 4 || spect == 5) {
+			new target = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
+			if (target != -1 && IsValidClient(target)) {
+				//PrintHintText(client, "<font color='#FFFFFF'>[Klasa: <b>%s</b>]\n[Xp: <b>%i</b> | Lv: <b>%i</b>]\n[Item: <b>%s</b>]</font>", class_name[player_class[target]][player_promotion[target][player_class[target]]], player_exp[target][player_class[target]], player_lvl[target][player_class[target]], item_name[player_item[target]]);
+				PrintHintText(client, "[Klasa: %s]\n[Xp: %i | Lv: %i]\n[Item: %s]", class_name[player_class[target]][player_promotion[target][player_class[target]]], player_exp[target][player_class[target]], player_lvl[target][player_class[target]], item_name[player_item[target]]);
+			}
+		}
+	}
+	
+	return Plugin_Continue;
 }
 
 public Action:MainMenu_Menu(client, args) {
@@ -1412,13 +1774,14 @@ public DesctiptionBasic_Handler(Handle:classhandle, MenuAction:action, client, p
 		ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 		
 		new String:desc[DESCLENEXTENDED];
+		/*
 		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 		if (classForward != INVALID_FUNCTION) {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_basic], class_intelligence[itemVal][pos_basic], class_health[itemVal][pos_basic], class_damage[itemVal][pos_basic], class_resistance[itemVal][pos_basic], class_trim[itemVal][pos_basic], weapons, class_description[itemVal][pos_basic]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: useclass", class_name[itemVal][pos_basic], class_intelligence[itemVal][pos_basic], class_health[itemVal][pos_basic], class_damage[itemVal][pos_basic], class_resistance[itemVal][pos_basic], class_trim[itemVal][pos_basic], weapons, class_description[itemVal][pos_basic]);
 		}
-		else {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_basic], class_intelligence[itemVal][pos_basic], class_health[itemVal][pos_basic], class_damage[itemVal][pos_basic], class_resistance[itemVal][pos_basic], class_trim[itemVal][pos_basic], weapons, class_description[itemVal][pos_basic]);
-		}
+		else {*/
+		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_basic], class_intelligence[itemVal][pos_basic], class_health[itemVal][pos_basic], class_damage[itemVal][pos_basic], class_resistance[itemVal][pos_basic], class_trim[itemVal][pos_basic], weapons, class_description[itemVal][pos_basic]);
+		//}
 		
 		new Handle:menu = CreateMenu(DescriptionBasicBack_Handler);
 		SetMenuTitle(menu, desc);
@@ -1473,13 +1836,14 @@ public DescriptionPro_Handler(Handle:classhandle, MenuAction:action, client, pos
 		ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 		
 		new String:desc[DESCLENEXTENDED];
+		/*
 		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 		if (classForward != INVALID_FUNCTION) {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_pro], class_intelligence[itemVal][pos_pro], class_health[itemVal][pos_pro], class_damage[itemVal][pos_pro], class_resistance[itemVal][pos_pro], class_trim[itemVal][pos_pro], weapons, class_description[itemVal][pos_pro]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: useclass", class_name[itemVal][pos_pro], class_intelligence[itemVal][pos_pro], class_health[itemVal][pos_pro], class_damage[itemVal][pos_pro], class_resistance[itemVal][pos_pro], class_trim[itemVal][pos_pro], weapons, class_description[itemVal][pos_pro]);
 		}
-		else {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_pro], class_intelligence[itemVal][pos_pro], class_health[itemVal][pos_pro], class_damage[itemVal][pos_pro], class_resistance[itemVal][pos_pro], class_trim[itemVal][pos_pro], weapons, class_description[itemVal][pos_pro]);
-		}
+		else {*/
+		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_pro], class_intelligence[itemVal][pos_pro], class_health[itemVal][pos_pro], class_damage[itemVal][pos_pro], class_resistance[itemVal][pos_pro], class_trim[itemVal][pos_pro], weapons, class_description[itemVal][pos_pro]);
+		//}
 		
 		new Handle:menu = CreateMenu(DescriptionProBack_Handler);
 		SetMenuTitle(menu, desc);
@@ -1537,13 +1901,14 @@ public DescriptionElite_Handler(Handle:classhandle, MenuAction:action, client, p
 		ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 		
 		new String:desc[DESCLENEXTENDED];
+		/*
 		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 		if (classForward != INVALID_FUNCTION) {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_elite], class_intelligence[itemVal][pos_elite], class_health[itemVal][pos_elite], class_damage[itemVal][pos_elite], class_resistance[itemVal][pos_elite], class_trim[itemVal][pos_elite], weapons, class_description[itemVal][pos_elite]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: useclass", class_name[itemVal][pos_elite], class_intelligence[itemVal][pos_elite], class_health[itemVal][pos_elite], class_damage[itemVal][pos_elite], class_resistance[itemVal][pos_elite], class_trim[itemVal][pos_elite], weapons, class_description[itemVal][pos_elite]);
 		}
-		else {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_elite], class_intelligence[itemVal][pos_elite], class_health[itemVal][pos_elite], class_damage[itemVal][pos_elite], class_resistance[itemVal][pos_elite], class_trim[itemVal][pos_elite], weapons, class_description[itemVal][pos_elite]);
-		}
+		else {*/
+		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_elite], class_intelligence[itemVal][pos_elite], class_health[itemVal][pos_elite], class_damage[itemVal][pos_elite], class_resistance[itemVal][pos_elite], class_trim[itemVal][pos_elite], weapons, class_description[itemVal][pos_elite]);
+		//}
 		
 		new Handle:menu = CreateMenu(DescriptionEliteBack_Handler);
 		SetMenuTitle(menu, desc);
@@ -1600,13 +1965,14 @@ public DescriptionMaster_Handler(Handle:classhandle, MenuAction:action, client, 
 		ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 		
 		new String:desc[DESCLENEXTENDED];
+		/*
 		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 		if (classForward != INVALID_FUNCTION) {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_master], class_intelligence[itemVal][pos_master], class_health[itemVal][pos_master], class_damage[itemVal][pos_master], class_resistance[itemVal][pos_master], class_trim[itemVal][pos_master], weapons, class_description[itemVal][pos_master]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: useclass", class_name[itemVal][pos_master], class_intelligence[itemVal][pos_master], class_health[itemVal][pos_master], class_damage[itemVal][pos_master], class_resistance[itemVal][pos_master], class_trim[itemVal][pos_master], weapons, class_description[itemVal][pos_master]);
 		}
-		else {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_master], class_intelligence[itemVal][pos_master], class_health[itemVal][pos_master], class_damage[itemVal][pos_master], class_resistance[itemVal][pos_master], class_trim[itemVal][pos_master], weapons, class_description[itemVal][pos_master]);
-		}
+		else {*/
+		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_master], class_intelligence[itemVal][pos_master], class_health[itemVal][pos_master], class_damage[itemVal][pos_master], class_resistance[itemVal][pos_master], class_trim[itemVal][pos_master], weapons, class_description[itemVal][pos_master]);
+		//}
 		
 		new Handle:menu = CreateMenu(DescriptionMasterBack_Handler);
 		SetMenuTitle(menu, desc);
@@ -1663,13 +2029,14 @@ public DescriptionGod_Handler(Handle:classhandle, MenuAction:action, client, pos
 		ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 		
 		new String:desc[DESCLENEXTENDED];
+		/*
 		new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 		if (classForward != INVALID_FUNCTION) {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos_god], class_intelligence[itemVal][pos_god], class_health[itemVal][pos_god], class_damage[itemVal][pos_god], class_resistance[itemVal][pos_god], class_trim[itemVal][pos_god], weapons, class_description[itemVal][pos_god]);
+			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: useclass", class_name[itemVal][pos_god], class_intelligence[itemVal][pos_god], class_health[itemVal][pos_god], class_damage[itemVal][pos_god], class_resistance[itemVal][pos_god], class_trim[itemVal][pos_god], weapons, class_description[itemVal][pos_god]);
 		}
-		else {
-			Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_god], class_intelligence[itemVal][pos_god], class_health[itemVal][pos_god], class_damage[itemVal][pos_god], class_resistance[itemVal][pos_god], class_trim[itemVal][pos_god], weapons, class_description[itemVal][pos_god]);
-		}
+		else {*/
+		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos_god], class_intelligence[itemVal][pos_god], class_health[itemVal][pos_god], class_damage[itemVal][pos_god], class_resistance[itemVal][pos_god], class_trim[itemVal][pos_god], weapons, class_description[itemVal][pos_god]);
+		//}
 		
 		new Handle:menu = CreateMenu(DescriptionGodBack_Handler);
 		SetMenuTitle(menu, desc);
@@ -1708,13 +2075,14 @@ public Action:DisplayDescription_Menu(client, itemVal, pos) {
 	ReplaceString(weapons, sizeof(weapons), "#weapon_", "|");
 	
 	new String:desc[DESCLENEXTENDED];
+	/*
 	new Function:classForward = GetFunctionByName(class_plugins[itemVal], "cod_classSkillUsed");
 	if (classForward != INVALID_FUNCTION) {
-		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: Useclass", class_name[itemVal][pos], class_intelligence[itemVal][pos], class_health[itemVal][pos], class_damage[itemVal][pos], class_resistance[itemVal][pos], class_trim[itemVal][pos], weapons, class_description[itemVal][pos]);
+		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s\nUzycie umiejetnosci: useclass", class_name[itemVal][pos], class_intelligence[itemVal][pos], class_health[itemVal][pos], class_damage[itemVal][pos], class_resistance[itemVal][pos], class_trim[itemVal][pos], weapons, class_description[itemVal][pos]);
 	}
-	else {
-		Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos], class_intelligence[itemVal][pos], class_health[itemVal][pos], class_damage[itemVal][pos], class_resistance[itemVal][pos], class_trim[itemVal][pos], weapons, class_description[itemVal][pos]);
-	}
+	else {*/
+	Format(desc, DESCLENEXTENDED, "Klasa: %s\nInteligencja: %i\nZdrowie: %i\nObrazenia: %i\nWytrzymalosc: %i\nKondycja: %i\nBronie: %s\nOpis: %s", class_name[itemVal][pos], class_intelligence[itemVal][pos], class_health[itemVal][pos], class_damage[itemVal][pos], class_resistance[itemVal][pos], class_trim[itemVal][pos], weapons, class_description[itemVal][pos]);
+	//}
 	
 	posGlobal[client] = pos;
 	
@@ -1728,7 +2096,7 @@ public Action:DisplayDescription_Menu(client, itemVal, pos) {
 	}
 	AddMenuItem(menu, "3", "Zmień grupę klas");
 	DisplayMenu(menu, client, MENU_TIME_FOREVER);
-	return Plugin_Handled; //tego tu nie bylo
+	return Plugin_Handled;
 }
 
 public DisplayDesctiprion_Menu(Handle:classhandle, MenuAction:action, client, position) {
@@ -1844,12 +2212,81 @@ public Native_RegisterClass(Handle:plugin, args) {
 		counter++;
 	}
 	
-	GetNativeArray(12, class_intelligence[class_numberOfClasses], ADVANCESVALUE);
-	GetNativeArray(13, class_health[class_numberOfClasses], ADVANCESVALUE);
-	GetNativeArray(14, class_damage[class_numberOfClasses], ADVANCESVALUE);
-	GetNativeArray(15, class_resistance[class_numberOfClasses], ADVANCESVALUE);
-	GetNativeArray(16, class_trim[class_numberOfClasses], ADVANCESVALUE);
+	GetNativeArray(12, class_intelligence[class_numberOfClasses], PROMOTIONSVALUE);
+	GetNativeArray(13, class_health[class_numberOfClasses], PROMOTIONSVALUE);
+	GetNativeArray(14, class_damage[class_numberOfClasses], PROMOTIONSVALUE);
+	GetNativeArray(15, class_resistance[class_numberOfClasses], PROMOTIONSVALUE);
+	GetNativeArray(16, class_trim[class_numberOfClasses], PROMOTIONSVALUE);
 }
+
+public Native_GetPlayerClass(Handle:plugin, args) {
+	new client = GetNativeCell(1);
+	
+	SetNativeString(2, class_name[player_class[client]][0], GetNativeCell(3));
+	return 1;
+}
+
+public Native_GetPlayerPromotion(Handle:plugin, args) {
+	new client = GetNativeCell(1);
+	
+	return player_promotion[client][player_class[client]];
+}
+
+public Native_GetPlayerMaxHealth(Handle:plugin, args) {
+	new client = GetNativeCell(1);
+	
+	new result = HEALTH_BASE + (player_stats_health[client][player_class[client]] * HEALTH_MULTIPLIER) + class_health[player_class[client]][player_promotion[client][player_class[client]]] + item_health[player_item[client]];
+	
+	return result;
+}
+
+public Native_InflictDamageWithIntelligence(Handle:plugin, numParams) {
+	new victim = GetNativeCell(1);
+	new attacker = GetNativeCell(2);
+	new Float:factor = GetNativeCell(3);
+	
+	/*
+	new Handle:data = CreateDataPack();
+	WritePackCell(data, victim);
+	WritePackCell(data, attacker);
+	WritePackCell(data, factor);
+	*/
+	//CreateTimer(0.1, InflictDamageWithIntelligence_Timer, data, TIMER_FLAG_NO_MAPCHANGE);
+	
+	new Float:attacker_intelligence = float(player_stats_intelligence[attacker][player_class[attacker]] + class_intelligence[player_class[attacker]][player_promotion[attacker][player_class[attacker]]] + item_intelligence[player_item[attacker]]);
+	new Float:victim_resistance = float(player_stats_resistance[victim][player_class[victim]] + class_resistance[player_class[victim]][player_promotion[victim][player_class[victim]]] + item_resistance[player_item[victim]]);
+	
+	new Float:damage = (attacker_intelligence * factor) / (1.0 + victim_resistance / 50.0);
+	
+	if (IsValidClient(victim) && IsPlayerAlive(victim) && IsValidClient(attacker)) {
+		SDKHooks_TakeDamage(victim, attacker, attacker, damage, DMG_BULLET);
+	}
+	
+	return -1;
+}
+
+/*
+public Action:InflictDamageWithIntelligence_Timer(Handle:timer, Handle:data) {
+	ResetPack(data);
+	new victim = ReadPackCell(data);
+	new attacker = ReadPackCell(data);
+	new Float:factor = ReadPackCell(data);
+	CloseHandle(data);
+	
+	new Float:attacker_intelligence = float(player_stats_intelligence[attacker][player_class[attacker]] + class_intelligence[player_class[attacker]][player_promotion[attacker][player_class[attacker]]] + item_intelligence[player_item[attacker]]);
+	new Float:victim_resistance = float(player_stats_resistance[victim][player_class[victim]] + class_resistance[player_class[victim]][player_promotion[victim][player_class[victim]]] + item_resistance[player_item[victim]]);
+	
+	new Float:damage = (attacker_intelligence * factor) / (1.0 + victim_resistance / 50.0);
+	
+	PrintToChatAll("to dziala, zadales: %f damage", damage);
+	
+	if (IsValidClient(victim) && IsPlayerAlive(victim) && IsValidClient(attacker)) {
+		SDKHooks_TakeDamage(victim, attacker, attacker, damage, DMG_BULLET);
+		PrintToChatAll("to tez dziala");
+	}
+	
+	return Plugin_Continue;
+}*/
 
 public Native_RegisterItem(Handle:plugin, args) {
 	if(args < 11) {
@@ -1870,6 +2307,13 @@ public Native_RegisterItem(Handle:plugin, args) {
 	item_damage[item_numberOfItems] = GetNativeCell(9);
 	item_resistance[item_numberOfItems] = GetNativeCell(10);
 	item_trim[item_numberOfItems] = GetNativeCell(11);
+}
+
+public Native_GetPlayerItem(Handle:plugin, args) {
+	new client = GetNativeCell(1);
+	
+	SetNativeString(2, item_name[player_item[client]], GetNativeCell(3));
+	return 1;
 }
 
 bool:IsValidClient(client) {
