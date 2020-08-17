@@ -15,6 +15,7 @@ Silnik:
 - ~~Blokowanie kupowania i dawanie broni,blokowanie wyrzucania i podnoszenia broni~~
 
 Sklep serwerowy
+
 Forum
 
 
@@ -49,8 +50,8 @@ Pomniejsze rzeczy:
 - ~~Prędkość poruszania się gracza,~~
 
 Dodatkowe rzeczy:
-~~- zmienic strcmp na StrEqual~~
-~~- zoptymalizować sprawdzanie w pluginach klas, czy gracz posiada określoną klasę~~
+- ~~zmienic strcmp na StrEqual~~
+- ~~zoptymalizować sprawdzanie w pluginach klas, czy gracz posiada określoną klasę~~
 - mnożnik expa od 22 do 6,
 - kolorki do informacji hint,
 - wersje informacji w hint,
