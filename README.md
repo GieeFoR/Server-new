@@ -9,11 +9,14 @@ Silnik:
 - ~~System wyswietlania info o klasie, exp, lvl, item,~~
 - ~~System itemów,~~
 - ~~Zapis i odczyt danych do(z) pliku,~~
-- Zapis i odczyt danych do(z) bazy danych,
+- ~~Zapis i odczyt danych do(z) bazy danych,~~
 - ~~Statystyki,~~
 - ~~System awansów klas,~~
 - ~~Blokowanie kupowania i dawanie broni,blokowanie wyrzucania i podnoszenia broni~~
-- Sklep serwerowy
+
+Sklep serwerowy
+Forum
+
 
 Menu:
 - ~~Wybieranie klasy,~~
@@ -30,10 +33,14 @@ Klasy:
 - Szturmowiec,
 - Strzelec Wyborowy,
 - Snajper+,
-- Medyk+,
+- Medyk+, (progressbar + dźwięk wskrzeszania)
 
 Itemy:
-- Wszystko,
+- ~~Wszystko,~~
+- maska spawacza,
+- radar telegrafisty,
+- krytyczne naboje,
+
 
 Pomniejsze rzeczy:
 - ~~Komunikaty o awansach (+ dźwięk)~~, o osiągnięciu limitu lvl, 
@@ -42,5 +49,14 @@ Pomniejsze rzeczy:
 - ~~Prędkość poruszania się gracza,~~
 
 Dodatkowe rzeczy:
-~~zmienic strcmp na StrEqual~~
-~~zoptymalizować sprawdzanie w pluginach klas, czy gracz posiada określoną klasę~~
+~~- zmienic strcmp na StrEqual~~
+~~- zoptymalizować sprawdzanie w pluginach klas, czy gracz posiada określoną klasę~~
+- mnożnik expa od 22 do 6,
+- kolorki do informacji hint,
+- wersje informacji w hint,
+- roundsound'y,
+- timeleft VOX,
+- current time VOX,
+- it's time to choose,
+- maps,
+- 
