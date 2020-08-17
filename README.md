@@ -14,9 +14,9 @@ Silnik:
 - ~~System awansów klas,~~
 - ~~Blokowanie kupowania i dawanie broni,blokowanie wyrzucania i podnoszenia broni~~
 
-Sklep serwerowy
+## Sklep serwerowy
 
-Forum
+## Forum
 
 
 Menu:
