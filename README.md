@@ -14,11 +14,6 @@
 - ~~System awansów klas,~~
 - ~~Blokowanie kupowania i dawanie broni,blokowanie wyrzucania i podnoszenia broni~~
 
-## Sklep serwerowy
-
-## Forum
-
-
 ### Menu:
 - ~~Wybieranie klasy,~~
 - ~~Opisy klas,~~
@@ -60,4 +55,8 @@
 - current time VOX,
 - it's time to choose,
 - maps,
-- 
+
+
+## Sklep serwerowy
+
+## Forum
