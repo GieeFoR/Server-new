@@ -1,7 +1,7 @@
 # Serwer-new
 
 # TODO:
-Silnik:
+## Silnik:
 - ~~System exp i lvl,~~ 
 - Menu (szczegóły na dole),
 - Klasy (szczegóły na dole),
@@ -19,14 +19,14 @@ Silnik:
 ## Forum
 
 
-Menu:
+### Menu:
 - ~~Wybieranie klasy,~~
 - ~~Opisy klas,~~
 - ~~Opis itemow,~~
 - Info o serwerze,
 - Kontakt z administracja,
 
-Klasy:
+### Klasy:
 - Rusher,
 - Komandos,
 - Snajper,
@@ -36,20 +36,20 @@ Klasy:
 - Snajper+,
 - Medyk+, (progressbar + dźwięk wskrzeszania)
 
-Itemy:
+### Itemy:
 - ~~Wszystko,~~
 - maska spawacza,
 - radar telegrafisty,
 - krytyczne naboje,
 
 
-Pomniejsze rzeczy:
+### Pomniejsze rzeczy:
 - ~~Komunikaty o awansach (+ dźwięk)~~, o osiągnięciu limitu lvl, 
 - ~~Przenoszenie po wejściu do spectate,~~
 - Wyciszyć spectate?,
 - ~~Prędkość poruszania się gracza,~~
 
-Dodatkowe rzeczy:
+### Dodatkowe rzeczy:
 - ~~zmienic strcmp na StrEqual~~
 - ~~zoptymalizować sprawdzanie w pluginach klas, czy gracz posiada określoną klasę~~
 - mnożnik expa od 22 do 6,
